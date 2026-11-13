@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+.ipynb_checkpoints/
+.DS_Store
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/shared_test.wav
+!data/raw/transcripts.txt
+results/*
+!results/.gitkeep
