@@ -8,7 +8,7 @@ load_audio -> frame_signal -> frame_energy -> classify_frames -> lpc_all (-> war
 
 ## Modules
 - src/framing.py (A): load_audio, frame_signal, frame_energy, frame_zcr
-- src/detect.py (A): voicing_strength, calibrate_thresholds, classify_frames (labels only), plot_labels, plot_spectrogram
+- src/detect.py (A): voicing_strength, calibrate_thresholds, label_frame, classify_frames (labels only), plot_labels, plot_spectrogram, save_handoff
 - src/lpc.py (B): preemphasis, autocorr, levinson, lpc_frame, lpc_all, residual, lpc_envelope, log_spectral_distortion, warp_poles
 - src/pitch.py (C): rosenberg_pulse, impulse_train, build_f0, make_excitation
 - src/synth.py (C): synthesize, output_stage, convert, ablation variants

@@ -62,10 +62,7 @@ def frame_signal(x: np.ndarray, frame_len: int = 320, hop: int = 160):
     n_samples = x.shape[0]
     if n_samples < frame_len:
         return np.empty((0, frame_len), dtype=np.float32)
-    n_frames = 1 + (n_samples - frame_len) // hop
-    shape = (n_frames, frame_len)
-    strides = (hop * x.strides[0], x.strides[0])
-    return np.lib.stride_tricks.as_strided(x, shape=shape, strides=strides)
+    return np.lib.stride_tricks.sliding_window_view(x, frame_len)[::hop].copy()
 
 
 def frame_energy(frames: np.ndarray):
@@ -80,7 +77,7 @@ def frame_energy(frames: np.ndarray):
 def frame_zcr(frames: np.ndarray):
     """Zero‑crossing rate per frame as a fraction of sign changes.
 
-    The implementation follows the definition used in ``audio_utils.frame_zcr``.
+    The implementation follows the definition used in the fraction of adjacent sample pairs whose sign changes (zeros count as positive).
     Returns ``(n_frames,)``.
     """
     signs = np.sign(frames)

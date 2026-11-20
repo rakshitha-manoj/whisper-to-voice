@@ -1,8 +1,13 @@
-gradio
+numpy
 scipy
 matplotlib
 soundfile
 sounddevice
 librosa
+gradio
 jiwer
 pystoi
+pytest
+nbformat
+nbconvert
+# openai-whisper  (only needed for WER evaluation)

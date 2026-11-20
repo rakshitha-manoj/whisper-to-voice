@@ -23,7 +23,7 @@ def process_file(path, name):
     rms = frame_energy(frames)
     zcr = frame_zcr(frames)
     vs = voicing_strength(frames, fs=fs)
-    labels, zcr_thr, silence_thr = classify_frames(frames, rms, zcr)
+    labels, zcr_thr, silence_thr = classify_frames(frames, rms, zcr, return_thresholds=True)
     # Save plots
     plot_labels(x, fs, frames, labels, output_path=os.path.join(RESULTS_DIR, f"labels_{name}.png"))
     plot_spectrogram(x, fs, output_path=os.path.join(RESULTS_DIR, f"spectrogram_{name}.png"))
@@ -46,7 +46,7 @@ def synthetic_test():
     frames = frame_signal(signal)
     rms = frame_energy(frames)
     zcr = frame_zcr(frames)
-    labels, _, _ = classify_frames(frames, rms, zcr)
+    labels = classify_frames(frames, rms, zcr)
     print('Synthetic test label distribution:', dict(zip(*np.unique(labels, return_counts=True))))
 
 def compare_whisper_normal(whisper, normal):
@@ -89,7 +89,10 @@ def compare_whisper_normal(whisper, normal):
 if __name__ == '__main__':
     whisper_path = os.path.join(DATA_DIR, 'spk01_s01_whisper.wav')
     normal_path = os.path.join(DATA_DIR, 'spk01_s01_normal.wav')
-    whisper = process_file(whisper_path, 'whisper')
-    normal = process_file(normal_path, 'normal')
-    compare_whisper_normal(whisper, normal)
+    if os.path.exists(whisper_path) and os.path.exists(normal_path):
+        whisper = process_file(whisper_path, 'whisper')
+        normal = process_file(normal_path, 'normal')
+        compare_whisper_normal(whisper, normal)
+    else:
+        print('Skipping recordings: data/raw has no spk01_s01 whisper/normal wavs')
     synthetic_test()

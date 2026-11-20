@@ -50,35 +50,7 @@ def process_audio(
     zcr = frame_zcr(frames)
     vs = voicing_strength(frames, fs=fs)
 
-    # ------------------------------------------------------------------
-    # Noise‑floor calibration (first 0.3 s)
-    # ------------------------------------------------------------------
-    early_frames = int(0.3 * fs // 160)
-    early_frames = min(early_frames, len(rms))
-    noise_floor = np.median(rms[:early_frames]) if early_frames > 0 else 0.0
-    silence_thr = max(silence_multiplier * noise_floor, 1e-4)
-
-    # ------------------------------------------------------------------
-    # Classification using sliders
-    # ------------------------------------------------------------------
-    labels = np.empty_like(rms, dtype=int)
-    labels[rms < silence_thr] = 0
-    noisy_mask = (rms >= silence_thr) & (zcr > zcr_threshold)
-    labels[noisy_mask] = 1
-    labels[(rms >= silence_thr) & ~noisy_mask] = 2
-
-    # Hangover (5 hops) – copy from detect implementation
-    hangover = 5
-    for i in range(1, len(labels)):
-        if labels[i - 1] != 0 and labels[i] == 0:
-            start = max(0, i - hangover)
-            if np.any(labels[start:i] != 0):
-                labels[i] = labels[i - 1]
-    # Median smoothing (window 3)
-    if len(labels) >= 3:
-        med = np.copy(labels)
-        med[1:-1] = np.median(np.vstack((labels[:-2], labels[1:-1], labels[2:])), axis=0)
-        labels = med.astype(int)
+    labels, _, silence_thr = classify_frames(frames, rms, zcr, silence_mult=silence_multiplier, zcr_thr=zcr_threshold, return_thresholds=True)
 
     # ------------------------------------------------------------------
     # Generate plots – each saved to the results folder and returned as a path
@@ -298,10 +270,13 @@ with gr.Blocks() as demo:
                 plt.savefig(vs_path)
                 plt.close()
                 return comp_path, vs_path
-            comp_img, vs_img = make_comparison()
-            gr.Image(value=comp_img, label="Spectrograms side‑by‑side")
-            gr.Image(value=vs_img, label="Voicing strength curves")
-            gr.Markdown("*Whisper (left) vs Normal (right) – spectrograms and voicing strength.*")
+            if os.path.exists(whisper_path) and os.path.exists(normal_path):
+                comp_img, vs_img = make_comparison()
+                gr.Image(value=comp_img, label="Spectrograms side‑by‑side")
+                gr.Image(value=vs_img, label="Voicing strength curves")
+                gr.Markdown("*Whisper (left) vs Normal (right) – spectrograms and voicing strength.*")
+            else:
+                gr.Markdown("*Add spk01_s01 whisper and normal recordings to data/raw to enable this tab.*")
 
 if __name__ == "__main__":
     demo.launch()
