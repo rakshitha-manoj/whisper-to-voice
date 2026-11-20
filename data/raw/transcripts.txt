@@ -4,3 +4,4 @@
 04 These days a chicken leg is a rare dish.
 05 Rice is often served in round bowls.
 06 The juice of lemons makes fine punch.
+s01 Hey, how are you?
