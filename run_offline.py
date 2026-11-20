@@ -1,34 +1,27 @@
-import sys
-import soundfile
-from src.framing import load_audio, frame_signal, frame_energy
-from src.detect import classify_frames
-from src.lpc import lpc_all
-from src.pitch import build_f0, make_excitation
-from src.synth import synthesize, output_stage, run_ablation, evaluate_wer
+import argparse
 
-if len(sys.argv) < 3:
-    print("Usage: python run_offline.py <input.wav> <output.wav> [--ablation] [--wer]")
-    sys.exit(1)
+from src.synth import convert, run_ablation
 
-path_in = sys.argv[1]
-path_out = sys.argv[2]
-do_ablation = "--ablation" in sys.argv
-do_wer = "--wer" in sys.argv
 
-x, fs = load_audio(path_in)
-frames = frame_signal(x)
-energy = frame_energy(frames)
-labels = classify_frames(frames, energy)
-A, G = lpc_all(frames, order=12)
-f0 = build_f0(labels, energy, base_f0=120)
-e = make_excitation(labels, f0)
-y_raw = synthesize(A, G, e, labels, energy)
-y_out = output_stage(y_raw, energy)
-soundfile.write(path_out, y_out, fs)
-print(f"Written: {path_out}")
+def main():
+    p = argparse.ArgumentParser(description="Convert a whispered wav to voiced speech.")
+    p.add_argument("input")
+    p.add_argument("output")
+    p.add_argument("--base-f0", type=float, default=120.0)
+    p.add_argument("--decl", type=float, default=0.12)
+    p.add_argument("--stress", type=float, default=0.25)
+    p.add_argument("--aspiration", type=float, default=0.15)
+    p.add_argument("--warp", type=float, default=None)
+    p.add_argument("--volume", type=float, default=1.0)
+    p.add_argument("--variants", action="store_true", help="also write all ablation variants into results/")
+    args = p.parse_args()
 
-if do_ablation:
-    run_ablation(path_in, results_dir="results")
+    convert(args.input, args.output, volume=args.volume, base_f0=args.base_f0, decl=args.decl,
+            stress=args.stress, aspiration=args.aspiration, warp=args.warp)
+    print(f"Written: {args.output}")
+    if args.variants:
+        run_ablation(args.input, results_dir="results")
 
-if do_wer:
-    evaluate_wer(path_in, results_dir="results")
+
+if __name__ == "__main__":
+    main()
