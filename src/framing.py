@@ -16,11 +16,15 @@ DC_POLE = 0.995
 def dc_block(x, zi=None, r=DC_POLE):
     """Remove DC with the one pole high pass (1 - z^-1) / (1 - r z^-1), cutoff about 13 Hz at 16 kHz.
 
-    Returns (y, zi) so a stream can carry the filter state between hops.
+    Returns (y, zi) so a stream can carry the filter state between hops. Without a given zi the filter starts
+    in steady state for the first sample, so a file with a DC offset does not begin with a decaying step.
     """
+    x = np.asarray(x, dtype=np.float64)
+    if len(x) == 0:
+        return x.astype(np.float32), (np.zeros(1) if zi is None else zi)
     if zi is None:
-        zi = np.zeros(1)
-    y, zi = sig.lfilter([1.0, -1.0], [1.0, -r], np.asarray(x, dtype=np.float64), zi=zi)
+        zi = sig.lfilter_zi([1.0, -1.0], [1.0, -r]) * x[0]
+    y, zi = sig.lfilter([1.0, -1.0], [1.0, -r], x, zi=zi)
     return y.astype(np.float32), zi
 
 

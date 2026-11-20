@@ -155,7 +155,27 @@ def test_live_zcr_threshold_adapts_to_offline_value_and_finds_consonants():
 
 
 def test_live_fixed_zcr_threshold_param_overrides():
-    from src.live import process_file_live
+    from src.live import init_live_state, process_hop_live
     x, _ = pseudo_whisper()
-    process_file_live(x, params=dict(zcr_thr=0.9))
-    assert process_file_live.last_state["zcr_live"] == 0.12
+    st = init_live_state(dict(zcr_thr=0.9))
+    labels = []
+    for i in range(len(x) // 160):
+        _, st = process_hop_live(x[i * 160:(i + 1) * 160], st)
+        labels.append(st["last_label"])
+    assert st["zcr_live"] == 0.12
+    assert labels.count(1) == 0
+
+
+def test_live_zcr_threshold_keeps_adapting_when_window_not_multiple_of_ten():
+    from src.live import init_live_state, process_hop_live
+    rng = np.random.default_rng(0)
+    low = np.convolve(rng.standard_normal(16000 * 6), np.ones(8) / 8, "same") * 0.1
+    high = np.diff(rng.standard_normal(16000 * 6 + 1)) * 0.1
+    x = np.concatenate([np.zeros(4800), low, high]).astype(np.float32)
+    st = init_live_state(dict(zcr_window_s=2.55))
+    first = None
+    for i in range(len(x) // 160):
+        _, st = process_hop_live(x[i * 160:(i + 1) * 160], st)
+        if i == (4800 + len(low)) // 160:
+            first = st["zcr_live"]
+    assert st["zcr_live"] > first + 0.2

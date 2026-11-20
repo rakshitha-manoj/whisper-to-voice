@@ -4,7 +4,7 @@ Whisper to Voice: whispered speech in, voiced speech out, via LPC source filter 
 16 kHz mono float32, frame 320, hop 160. Contract in README.md. Full spec in docs/whisper_to_voice_team_guide.pdf.
 
 ## Pipeline (offline)
-load_audio -> frame_signal -> frame_energy -> classify_frames -> lpc_all (-> warp_poles) -> build_f0 -> make_excitation -> synthesize -> output_stage (radiation + de-emphasis + RMS match) -> peak_protect -> wav
+load_audio (mono, 16 kHz, dc_block) -> frame_signal -> frame_energy -> classify_frames -> lpc_all (-> warp_poles) -> build_f0 -> make_excitation -> synthesize -> output_stage (radiation + de-emphasis + DC blocker + RMS match) -> peak_protect -> wav
 Offline loops the same per-hop step functions the live path calls (f0_step for live only; build_f0 offline knows whole phrases).
 
 ## Modules

@@ -62,7 +62,7 @@ Tests and validation notebooks:
     f0 = build_f0(labels, energy, base_f0=120)
     e = make_excitation(labels, f0)                  # Rosenberg flow pulses + aspiration, noise, zeros
     y = synthesize(A, G, e, labels, energy)          # lfilter with zi carried across hops
-    y = output_stage(y, energy)                      # lip radiation, de-emphasis, per hop RMS match
+    y = output_stage(y, energy)                      # lip radiation, de-emphasis, DC blocker, per hop RMS match
 
 The live path (src/live.py) runs the same per hop step functions (f0_step, excitation_step, synth_step, output_step) one 160 sample block at a time, so offline and live produce the same sound.
 

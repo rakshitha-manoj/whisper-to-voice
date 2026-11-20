@@ -29,7 +29,7 @@ def init_live_state(params=None, fs=16000, hop=160):
     return dict(params=p, fs=fs, hop=hop,
                 prev=np.zeros(hop, dtype=np.float32),
                 calib_rms=[], calib_zcr=[], thresholds=None, dc_zi=np.zeros(1),
-                speech_zcr=[], zcr_live=float(p["zcr_init"]),
+                speech_zcr=[], zcr_live=float(p["zcr_init"]), zcr_updates=0,
                 last_nonsilent=0, since_nonsilent=10 ** 6,
                 f0_state=init_f0_state(0), exc_state=init_excitation_state(0),
                 zi=np.zeros(p["order"]), out_state=init_output_state(),
@@ -49,10 +49,11 @@ def _live_zcr_threshold(rms, zcr, silence_thr, state):
     hops_per_s = state["fs"] / state["hop"]
     if rms >= silence_thr:
         state["speech_zcr"].append(float(zcr))
+        state["zcr_updates"] += 1
         keep = int(p["zcr_window_s"] * hops_per_s)
         if len(state["speech_zcr"]) > keep:
             del state["speech_zcr"][:len(state["speech_zcr"]) - keep]
-        if len(state["speech_zcr"]) >= p["zcr_min_s"] * hops_per_s and len(state["speech_zcr"]) % 10 == 0:
+        if len(state["speech_zcr"]) >= p["zcr_min_s"] * hops_per_s and state["zcr_updates"] % 10 == 0:
             state["zcr_live"] = float(np.percentile(state["speech_zcr"], p["zcr_pct"]))
     return state["zcr_live"]
 

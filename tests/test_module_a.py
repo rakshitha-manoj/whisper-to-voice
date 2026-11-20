@@ -223,3 +223,16 @@ def test_load_audio_removes_dc_and_classifier_survives_offset(tmp_path):
     assert abs(float(np.mean(y[4000:]))) < 0.01
     lab = classify_frames(frame_signal(y), frame_energy(frame_signal(y)))
     assert np.mean(lab == base) > 0.8
+
+
+def test_dc_block_starts_in_steady_state_and_carries_state():
+    from src.framing import dc_block
+    x = np.full(2000, 0.3, dtype=np.float32) + 0.01 * np.random.default_rng(0).standard_normal(2000).astype(np.float32)
+    y, _ = dc_block(x)
+    assert np.max(np.abs(y[:400])) < 0.05
+    one, _ = dc_block(x, np.zeros(1))
+    parts, zi = [], np.zeros(1)
+    for a, b in ((0, 0), (0, 1), (1, 160), (160, 160), (160, 2000)):
+        yp, zi = dc_block(x[a:b], zi)
+        parts.append(yp)
+    np.testing.assert_allclose(np.concatenate(parts), one, atol=1e-6)
