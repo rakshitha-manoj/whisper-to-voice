@@ -22,7 +22,7 @@ Use headphones for every live test. When recording or starting the live stream, 
 
 Record (16 kHz mono):
 
-    python record.py data/raw/shared_test.wav 8                 # whisper sentences 01 and 02
+    python record.py data/raw/shared_test.wav 12                # whisper sentences 01 and 02
     python record.py data/raw/spk01_s03_whisper.wav 5           # spkXX_sNN_{whisper,normal}.wav, NN = line in transcripts.txt
 
 Offline, one file in, one file out (C8), optionally all ablation variants into results/ (C9):

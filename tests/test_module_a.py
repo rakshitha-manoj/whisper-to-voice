@@ -211,3 +211,15 @@ def test_plot_spectrogram_shape(tmp_path):
     S, f, t = plot_spectrogram(x, fs, output_path=str(tmp_path / "s.png"))
     assert S.shape == (len(f), len(t))
     assert os.path.exists(tmp_path / "s.png")
+
+
+def test_load_audio_removes_dc_and_classifier_survives_offset(tmp_path):
+    import soundfile
+    x, fs = pseudo_whisper()
+    base = classify_frames(frame_signal(x), frame_energy(frame_signal(x)))
+    p = tmp_path / "dc.wav"
+    soundfile.write(p, np.clip(x + 0.3, -1, 1), fs)
+    y, _ = load_audio(str(p))
+    assert abs(float(np.mean(y[4000:]))) < 0.01
+    lab = classify_frames(frame_signal(y), frame_energy(frame_signal(y)))
+    assert np.mean(lab == base) > 0.8

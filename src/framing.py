@@ -1,4 +1,3 @@
-# src/framing.py
 """Utility functions for loading audio, framing, and simple frame‑level features.
 All functions are pure (no side effects) and accept optional keyword arguments with sensible defaults.
 """
@@ -10,11 +9,23 @@ try:
     import soundfile as sf
 except Exception:
     sf = None
-    # wavfile already imported above
+
+DC_POLE = 0.995
+
+
+def dc_block(x, zi=None, r=DC_POLE):
+    """Remove DC with the one pole high pass (1 - z^-1) / (1 - r z^-1), cutoff about 13 Hz at 16 kHz.
+
+    Returns (y, zi) so a stream can carry the filter state between hops.
+    """
+    if zi is None:
+        zi = np.zeros(1)
+    y, zi = sig.lfilter([1.0, -1.0], [1.0, -r], np.asarray(x, dtype=np.float64), zi=zi)
+    return y.astype(np.float32), zi
 
 
 def load_audio(path: str, target_fs: int = 16000):
-    """Load an audio file, force mono, resample to *target_fs* (default 16 kHz).
+    """Load an audio file, force mono, resample to *target_fs* (default 16 kHz), remove DC with dc_block.
 
     Returns
     -------
@@ -32,15 +43,14 @@ def load_audio(path: str, target_fs: int = 16000):
             x = data.astype(np.float32) / max_val
         else:
             x = data.astype(np.float32)
-    # Ensure mono
     if x.ndim > 1:
         x = np.mean(x, axis=1)
-    # Resample if needed using polyphase filtering (high quality, efficient)
     if fs != target_fs:
         g = target_fs // np.gcd(int(fs), target_fs)
         r = int(fs) // np.gcd(int(fs), target_fs)
         x = sig.resample_poly(x, up=g, down=r)
         fs = target_fs
+    x, _ = dc_block(x)
     return x, fs
 
 
@@ -70,14 +80,14 @@ def frame_energy(frames: np.ndarray):
 
     Returns an array of shape ``(n_frames,)``.
     """
-    # Cast to float32 to avoid overflow for int input
     return np.sqrt(np.mean(frames.astype(np.float32) ** 2, axis=1))
 
 
 def frame_zcr(frames: np.ndarray):
     """Zero‑crossing rate per frame as a fraction of sign changes.
 
-    The implementation follows the definition used in the fraction of adjacent sample pairs whose sign changes (zeros count as positive).
+    Fraction of the frame_len - 1 adjacent sample pairs whose sign changes (zeros count as positive).
+    librosa divides by frame_len instead, so values differ by a factor frame_len / (frame_len - 1).
     Returns ``(n_frames,)``.
     """
     signs = np.sign(frames)

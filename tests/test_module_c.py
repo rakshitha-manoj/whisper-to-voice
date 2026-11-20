@@ -246,10 +246,11 @@ def test_output_stage_follows_input_loudness():
     assert np.corrcoef(np.log(r[2:]), np.log(energy[2:]))[0, 1] > 0.9
 
 
-def test_output_step_radiation_and_deemphasis_applied_once():
+def test_output_step_radiation_deemphasis_dc_block_applied_once():
     rng = np.random.default_rng(0)
     y = rng.standard_normal(2 * HOP)
     rad = scipy.signal.lfilter([1.0], [1.0, -synth.DEEMPH], scipy.signal.lfilter([1.0, -0.98], [1.0], y))
+    rad = scipy.signal.lfilter([1.0, -1.0], [1.0, -synth.OUT_DC_POLE], rad)
     state = synth.init_output_state()
     o1, state = synth.output_step(y[:HOP], 0.1, state)
     g1 = 0.1 / np.sqrt(np.mean(rad[:HOP] ** 2))
@@ -359,3 +360,16 @@ def test_step_functions_fast_enough_for_live():
     ms = (time.perf_counter() - t0) / n * 1e3
     print(f"ms per hop: {ms:.3f}")
     assert ms < 2.0
+
+
+def test_output_has_little_energy_below_60hz():
+    rng = np.random.default_rng(3)
+    n = 200
+    labels = np.full(n, 2)
+    f0 = np.full(n, 120.0)
+    e = pitch.make_excitation(labels, f0, aspiration=0.0)
+    A = np.tile(np.array([1.0, -0.9]), (n, 1))
+    y = synth.synthesize(A, np.ones(n), e, labels, np.ones(n))
+    out = synth.output_stage(y, np.full(n, 0.1))
+    f, P = scipy.signal.welch(out[2000:], 16000, nperseg=4096)
+    assert P[f < 60].sum() / P.sum() < 0.05

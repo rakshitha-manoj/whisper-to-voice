@@ -137,3 +137,25 @@ def test_list_devices_subprocess():
     r = subprocess.run([sys.executable, os.path.join(ROOT, "run_live.py"), "--list-devices"],
                        capture_output=True, text=True, cwd=ROOT, timeout=60)
     assert r.returncode == 0, r.stderr
+
+
+def test_live_zcr_threshold_adapts_to_offline_value_and_finds_consonants():
+    from src.detect import classify_frames
+    from src.framing import frame_signal, frame_energy
+    from src.live import init_live_state, process_hop_live
+    x, fs = pseudo_whisper()
+    _, zcr_off, _ = classify_frames(frame_signal(x), frame_energy(frame_signal(x)), return_thresholds=True)
+    st = init_live_state()
+    labels = []
+    for i in range(len(x) // 160):
+        _, st = process_hop_live(x[i * 160:(i + 1) * 160], st)
+        labels.append(st["last_label"])
+    assert abs(st["zcr_live"] - zcr_off) < 0.3 * zcr_off
+    assert labels.count(1) >= 20
+
+
+def test_live_fixed_zcr_threshold_param_overrides():
+    from src.live import process_file_live
+    x, _ = pseudo_whisper()
+    process_file_live(x, params=dict(zcr_thr=0.9))
+    assert process_file_live.last_state["zcr_live"] == 0.12

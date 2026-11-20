@@ -6,7 +6,7 @@ import time
 import numpy as np
 
 from .detect import calibrate_thresholds, label_frame
-from .framing import frame_zcr
+from .framing import dc_block, frame_zcr
 from .lpc import lpc_frame, warp_poles
 from .pitch import init_excitation_state, init_f0_state, f0_step, excitation_step
 from .synth import init_output_state, output_step, synth_step
@@ -19,7 +19,7 @@ def default_params():
     """Parameters read every hop, so a GUI can change them while streaming."""
     return dict(base_f0=120, decl=0.12, stress=0.25, jitter=0.005, aspiration=0.15,
                 warp=None, volume=1.0, order=12, calib_s=0.3, silence_mult=3.0,
-                zcr_pct=70, hangover=5)
+                zcr_pct=70, hangover=5, zcr_thr=None, zcr_init=0.12, zcr_window_s=3.0, zcr_min_s=0.5)
 
 
 def init_live_state(params=None, fs=16000, hop=160):
@@ -28,11 +28,33 @@ def init_live_state(params=None, fs=16000, hop=160):
         p.update(params)
     return dict(params=p, fs=fs, hop=hop,
                 prev=np.zeros(hop, dtype=np.float32),
-                calib_rms=[], calib_zcr=[], thresholds=None,
+                calib_rms=[], calib_zcr=[], thresholds=None, dc_zi=np.zeros(1),
+                speech_zcr=[], zcr_live=float(p["zcr_init"]),
                 last_nonsilent=0, since_nonsilent=10 ** 6,
                 f0_state=init_f0_state(0), exc_state=init_excitation_state(0),
                 zi=np.zeros(p["order"]), out_state=init_output_state(),
                 timings=[], hop_count=0, last_label=0, last_f0=0.0)
+
+
+def _live_zcr_threshold(rms, zcr, silence_thr, state):
+    """ZCR threshold for live labelling.
+
+    Calibration hears only silence, so the offline rule (a percentile of the non silent ZCRs) cannot be applied
+    at stream start. Start from zcr_init, then track the zcr_pct percentile of the ZCRs of the last zcr_window_s
+    seconds of non silent frames once zcr_min_s seconds of speech were heard. params zcr_thr fixes it instead.
+    """
+    p = state["params"]
+    if p.get("zcr_thr") is not None:
+        return float(p["zcr_thr"])
+    hops_per_s = state["fs"] / state["hop"]
+    if rms >= silence_thr:
+        state["speech_zcr"].append(float(zcr))
+        keep = int(p["zcr_window_s"] * hops_per_s)
+        if len(state["speech_zcr"]) > keep:
+            del state["speech_zcr"][:len(state["speech_zcr"]) - keep]
+        if len(state["speech_zcr"]) >= p["zcr_min_s"] * hops_per_s and len(state["speech_zcr"]) % 10 == 0:
+            state["zcr_live"] = float(np.percentile(state["speech_zcr"], p["zcr_pct"]))
+    return state["zcr_live"]
 
 
 def _soft_limit(y):
@@ -69,7 +91,7 @@ def process_hop_live(block, state):
     t0 = time.perf_counter()
     p = state["params"]
     hop, fs = state["hop"], state["fs"]
-    block = np.asarray(block, dtype=np.float32).reshape(-1)
+    block, state["dc_zi"] = dc_block(np.asarray(block, dtype=np.float32).reshape(-1), state["dc_zi"])
     frame, rms, zcr = _frame_features(state["prev"], block)
     n_calib = int(p["calib_s"] * fs // hop)
     out = np.zeros(hop, dtype=np.float32)
@@ -83,7 +105,8 @@ def process_hop_live(block, state):
                 np.array(state["calib_rms"]), np.array(state["calib_zcr"]), fs, hop,
                 p["calib_s"], p["silence_mult"], p["zcr_pct"])
     else:
-        silence_thr, zcr_thr = state["thresholds"]
+        silence_thr = state["thresholds"][0]
+        zcr_thr = _live_zcr_threshold(rms, zcr, silence_thr, state)
         raw = label_frame(rms, zcr, silence_thr, zcr_thr)
         label = _causal_hangover(raw, state, int(p["hangover"]))
         a, g = lpc_frame(frame, order=int(p["order"]))

@@ -7,6 +7,7 @@ GAIN_CAP = 50.0
 RAMP_RATIO = 2.0
 SILENT_RMS = 1e-12
 DEEMPH = 0.97
+OUT_DC_POLE = 0.99
 PEAK = 0.99
 
 VARIANTS = {
@@ -36,7 +37,7 @@ def synthesize(A, G, e, labels, energy, hop=160):
 
 def init_output_state():
     """State for output_step: radiation and de-emphasis filter memories, last gain."""
-    return dict(zi=np.zeros(1), zd=np.zeros(1), gain=None)
+    return dict(zi=np.zeros(1), zd=np.zeros(1), zdc=np.zeros(1), gain=None)
 
 
 def output_step(y_hop, target_rms, state, volume=1.0):
@@ -44,9 +45,12 @@ def output_step(y_hop, target_rms, state, volume=1.0):
 
     The LPC filter was fitted on pre-emphasised speech, so its envelope carries an extra +6 dB/octave;
     de-emphasis removes it. Without it the output is too bright and the high band hides the harmonics.
+    Radiation and de-emphasis together keep a DC gain of about 0.67, and the Rosenberg flow pulse has a large mean,
+    so a DC blocker (cutoff about 25 Hz) follows; otherwise the RMS match would spend loudness on inaudible DC.
     """
     y_rad, state["zi"] = scipy.signal.lfilter([1.0, -0.98], [1.0], y_hop, zi=state["zi"])
     y_rad, state["zd"] = scipy.signal.lfilter([1.0], [1.0, -DEEMPH], y_rad, zi=state["zd"])
+    y_rad, state["zdc"] = scipy.signal.lfilter([1.0, -1.0], [1.0, -OUT_DC_POLE], y_rad, zi=state["zdc"])
     rms = float(np.sqrt(np.mean(y_rad ** 2)))
     if rms < SILENT_RMS:
         return y_rad.astype(np.float32), state

@@ -241,7 +241,7 @@ def ablation_markdown(agg, listening=None, dev=False):
     for a in agg:
         ls = listening.get(a["system"], {})
         wer = "" if a["wer_mean"] is None else f"{a['wer_mean']:.3f} (corpus {a['wer_corpus']:.3f})"
-        lines.append(f"| {a['system']} | {wer} | {_fmt(a['lsd_mean'], 2)} | "
+        lines.append(f"| {a['system']} | {wer} | {'0 (reference)' if a['system'] == SYSTEMS_RAW else _fmt(a['lsd_mean'], 2)} | "
                      f"{ls.get('clarity', '')} | {ls.get('naturalness', '')} |")
     return "\n".join(lines) + "\n"
 
