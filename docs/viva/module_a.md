@@ -238,7 +238,7 @@ Constants: `BUDGET_MS = 10.0`, `LIMIT_KNEE = 0.9` (the knee belongs to Module C'
 
 ### `run_live.py`
 
-`main(argv)`: `--list-devices`; `--in/--out` device indices (used only if BOTH are given); `--passthrough`; `--wasapi`; `--base-f0` (120), `--aspiration` (0.15), `--warp`, `--volume`; `--file IN OUT` runs a file through the live code path; `--play` plays that result. `params_from_args` only sets `warp` if it is below 1.0. `run_file` loads with `load_audio`, runs `process_file_live`, writes the wav, prints the per-hop mean, p95, max and algorithmic delay. (Note `load_audio` already DC-blocks, and the live path DC-blocks again per block; harmless.)
+`main(argv)`: `--list-devices`; `--in/--out` device indices (`device_from_args`: either or both; a side not given uses its default device); `--passthrough`; `--wasapi`; `--base-f0` (120), `--aspiration` (0.15), `--warp`, `--volume`; `--file IN OUT` runs a file through the live code path; `--play` plays that result. `params_from_args` only sets `warp` if it is below 1.0. `run_file` loads with `load_audio`, runs `process_file_live`, writes the wav, prints the per-hop mean, p95, max and algorithmic delay. (Note `load_audio` already DC-blocks, and the live path DC-blocks again per block; harmless.)
 
 ### `record.py`
 
@@ -246,7 +246,7 @@ Nine lines: `python record.py path seconds` records `seconds * 16000` samples mo
 
 ### `app_a.py`
 
-A standalone Gradio view for Module A only: loads a file (or mic), shows the waveform, a 100 ms zoom with frame boxes, the label strip, RMS, ZCR and voicing strength curves with thresholds, the spectrogram, a table of label percentages, and a "Whisper vs Normal" tab. Note the ZCR slider default 0.33 is a FIXED threshold passed as `zcr_thr`, so it overrides the percentile rule. It is the older view; `app.py`'s Analysis tab covers it (`.claude/STRUCTURE.md`). It has a bug, see section 7.
+A standalone Gradio view for Module A only: loads a file (or mic), shows the waveform, a 100 ms zoom with frame boxes, the label strip, RMS, ZCR and voicing strength curves with thresholds, the spectrogram, a table of label percentages, and a "Whisper vs Normal" tab. Note the ZCR slider default 0.33 is a FIXED threshold passed as `zcr_thr`, so it overrides the percentile rule. It is the older view; `app.py`'s Analysis tab covers it (`.claude/STRUCTURE.md`). It had a bug (an undefined `noise_floor`), fixed on 2026-11-22; see section 7.
 
 ---
 
@@ -412,10 +412,10 @@ Validation notebook `notebooks/a_framing_validation.ipynb` shows A1 to A6: wavef
 7. `voicing_strength` limits. A frame of 320 samples contains fewer than two periods at pitches below about 100 Hz, and at lag 228 only 92 samples overlap. A 60 Hz sine scores only 0.66, while a periodic signal with a period (or a multiple) inside 40..228 scores near 1, even above 400 Hz (a 500 Hz sine scores 1.0 via a multiple of its period). So it is not a strict pitch detector. It is O(N^2) per frame with `np.correlate` full mode and is not used in the live path. It is a diagnostic only; label decisions never use it.
 8. Latency figures are partly a model. `algorithmic_ms` is defined as 2 hops; the repo has no loopback measurement. Device latency is whatever the driver reports, and no device figure has been recorded on the demo machine yet. PortAudio's reported latencies may already include part of the block buffering, so "20 ms + device" is an estimate that can double count a little; only a loopback test (play a click, record it) gives the true round trip.
 9. Python is not a hard real-time system. The garbage collector or the OS scheduler can cause a rare spike beyond 10 ms; the measured max was about 1.5 ms on the test clip, but that is a file loop without a sound card in the way. Underruns are logged in `status_log` but not repaired.
-10. No exception handling in the callback. If `process_hop_live` raised, PortAudio would stop the stream. The code relies on the function being total (it uses `np.nan_to_num` on the output).
+10. Exceptions in the callback. Originally, if `process_hop_live` raised, the exception would stop the stream. Since 2026-11-22 the callback catches it, outputs silence for that hop, counts the errors and prints the count and the first error after the stream stops (`test_stream_callback_survives_processing_error`). The processing itself still aims to be total (`np.nan_to_num` on the output), so the guard is a safety net, not the normal path.
 11. `load_audio` fallback path (no soundfile) converts signed integers by `/iinfo.max` (so int16 -32768 maps slightly below -1) and does not normalise unsigned 8-bit; with soundfile installed, the normal case, this path is not used.
 12. DC state differences: offline starts the DC filter in steady state, live starts at zero, so a live stream with a large DC offset has a short transient in the first few ms (it decays with a 12.5 ms time constant).
-13. `app_a.py` bug (found while reading, not fixed, see report): `process_audio` uses a variable `noise_floor` that is never defined, so each "Process" click ends in a NameError that the button handler catches and shows as "Error: name 'noise_floor' is not defined". Be aware of this if the older standalone view is demoed; `app.py`'s Analysis tab is the maintained view.
+13. `app_a.py` had a bug, fixed on 2026-11-22: `process_audio` used a variable `noise_floor` that was never defined, so each "Process" click ended in a NameError. It now computes the noise floor as silence threshold / multiplier (the floor the threshold was built from), and `test_app_a_process_audio_runs` guards it. `app.py`'s Analysis tab is still the maintained view.
 14. Spec versus code on thresholds: the guide says "calibrate ... then freeze the threshold". The code freezes the silence threshold but lets the ZCR threshold adapt, because the calibration period contains no speech.
 15. Interface point: you own the label and the RMS; Module C owns what happens after. A wrong label 1 on a vowel gives noise instead of a pulse train (whisper-like output); a wrong label 0 on speech gives silence.
 

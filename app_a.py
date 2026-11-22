@@ -51,6 +51,7 @@ def process_audio(
     vs = voicing_strength(frames, fs=fs)
 
     labels, _, silence_thr = classify_frames(frames, rms, zcr, silence_mult=silence_multiplier, zcr_thr=zcr_threshold, return_thresholds=True)
+    noise_floor = silence_thr / silence_multiplier if silence_multiplier > 0 else float("nan")
 
     # ------------------------------------------------------------------
     # Generate plots – each saved to the results folder and returned as a path
@@ -129,7 +130,7 @@ def process_audio(
         f"- Silence: {perc['silence']:.1f}%\n"
         f"- Consonant: {perc['consonant']:.1f}%\n"
         f"- Vowel‑like: {perc['vowel']:.1f}%\n"
-        f"**Noise floor (median RMS 0‑0.3 s)**: {noise_floor:.6f}\n"
+        f"**Noise floor (from the first 0.3 s)**: {noise_floor:.6f}\n"
         f"**Silence threshold** (multiplier {silence_multiplier:.2f}): {silence_thr:.6f}\n"
         f"**ZCR threshold**: {zcr_threshold:.3f}\n"
         f"**Mean voicing strength**: {vs.mean():.3f}\n"

@@ -33,9 +33,9 @@ The automated suite, the notebooks and the app need no recordings. `data/raw/sha
 
 Expected result, verified on 2026-11-22 (Windows, Python 3.12):
 
-    101 passed in 22.78s
+    104 passed in 29.68s
 
-Allow roughly 20 to 45 seconds depending on the machine. If the count is not 101, either a test file changed or something failed to import.
+Allow roughly 20 to 45 seconds depending on the machine. If the count is not 104, either a test file changed or something failed to import.
 
 Notes:
 
@@ -50,7 +50,7 @@ Notes:
 * `src/mocks.py`: `mock_frames`, `mock_energy`, `mock_labels` (all 2) and `mock_lpc` (a = [1, 0, ...], G = 1). They let one module be tested before a teammate's module is ready. `test_module_c.py` uses `mock_frames` and `mock_energy`; `test_lpc.py` uses `mock_frames` to cut the fixture into frames.
 * `tests/validate_module_a.py` is a script, not a test (its name does not match `test_*.py`, so pytest does not collect it, and it has no assertions). Run it with `python tests/validate_module_a.py`. It processes `data/raw/spk01_s01_whisper.wav` and `_normal.wav` if both exist (label plot, spectrogram and a whisper versus normal comparison figure into `results/`), otherwise it prints "Skipping recordings", and then it always runs a small synthetic noise-burst check and prints the label counts. Expected output without recordings: the skip line and a label distribution line such as `Synthetic test label distribution: {np.int64(0): np.int64(93), np.int64(1): np.int64(12), np.int64(2): np.int64(44)}` (NumPy 2 prints the `np.int64` wrappers; the noise is not seeded, so counts can vary slightly).
 
-### 2.1 tests/test_module_a.py (Module A: framing, features, labelling) - 20 tests
+### 2.1 tests/test_module_a.py (Module A: framing, features, labelling) - 21 tests
 
 | Test | What it checks | Why it matters |
 |---|---|---|
@@ -73,6 +73,7 @@ Notes:
 | `test_save_handoff` | `save_handoff` writes `labels.npy` and `energy.npy` that load back unchanged. | Team handoff files. |
 | `test_plot_spectrogram_shape` | `plot_spectrogram` returns an array of shape (len(f), len(t)) and writes the png. | Plot helper contract. |
 | `test_load_audio_removes_dc_and_classifier_survives_offset` | A wav with +0.3 DC loads with mean below 0.01 after the first 4000 samples, and over 80 percent of labels still match those of the clean signal. | A DC offset from a sound card must not break calibration. |
+| `test_app_a_process_audio_runs` | `app_a.process_audio` on the fixture completes, writes all five plots (into a temporary folder) and its summary shows a finite, positive noise floor. | Regression test for the undefined `noise_floor` that broke every Process click in `app_a.py`. |
 | `test_dc_block_starts_in_steady_state_and_carries_state` | A constant 0.3 input (plus small noise) gives output below 0.05 over the first 400 samples, so there is no decaying start-up step (steady-state start). Splitting the signal into chunks, including empty ones, and carrying `zi` reproduces the one-shot output (atol 1e-6). | The live path calls `dc_block` per hop and must give the same result as the offline call. |
 
 ### 2.2 tests/test_lpc.py (Module B: LPC) - 16 tests
@@ -126,7 +127,7 @@ Notes:
 | `test_output_has_little_energy_below_60hz` | Less than 5 percent of output power lies below 60 Hz. | The DC blocker does its job (the Rosenberg flow has a large mean). |
 | `test_render_shorter_than_one_frame[None\|0.92]` (2) | Features with zero frames render to silence of the input length, with or without warp. | Short clips must not crash. |
 
-### 2.4 tests/test_live.py (live path and entry points) - 13 tests
+### 2.4 tests/test_live.py (live path and entry points) - 15 tests
 
 These use the real Modules A, B and C on the pseudo-whisper fixture.
 
@@ -142,6 +143,8 @@ These use the real Modules A, B and C on the pseudo-whisper fixture.
 | `test_imports_without_device` | `app`, `run_live` and `src.stream` import without an audio device. | Allows running tests and the app on any machine. |
 | `test_run_live_file_subprocess` | `run_live.py --file in.wav out.wav` exits with 0 and writes a non-trivial wav. | The no-microphone demo mode. |
 | `test_list_devices_subprocess` | `run_live.py --list-devices` exits with 0. | Basic device enumeration works. |
+| `test_device_from_args_keeps_a_lone_in_or_out` | `run_live.device_from_args` returns None with no indices, the pair with both, and `(1, None)` / `(None, 3)` with only one, so the other side uses its default device. | A lone `--in` or `--out` used to be silently ignored. |
+| `test_stream_callback_survives_processing_error` | With `process_hop_live` patched to raise, the stream callback outputs silence for that hop and records `error_count` and `first_error`; with the real function restored the next hop processes normally. | One exception in the audio callback used to stop the whole stream. |
 | `test_live_zcr_threshold_adapts_to_offline_value_and_finds_consonants` | After streaming the fixture, the live ZCR threshold is within 30 percent of the offline threshold, and at least 20 hops were labelled consonant. | The adaptive live ZCR rule works without the whole clip. |
 | `test_live_fixed_zcr_threshold_param_overrides` | `zcr_thr=0.9` fixes the threshold: `zcr_live` stays at its initial 0.12 and no hop is labelled consonant. | The parameter overrides adaptation. |
 | `test_live_zcr_threshold_keeps_adapting_when_window_not_multiple_of_ten` | With `zcr_window_s=2.55`, a switch from low-ZCR to high-ZCR input raises `zcr_live` by more than 0.2. | Regression test: an earlier update counter stopped updating once the window was full. |
@@ -181,7 +184,7 @@ These test the pure helper functions on the fixture. The browser layer is covere
 | `test_too_short_clip_raises_friendly` | An 80-sample clip makes `convert_clip`, `compare_variants` and `analyse` raise `ValueError` mentioning "shorter than one" frame. | Friendly error instead of a crash. |
 | `test_f0_params_follow_variant` | The label/f0 plot uses the variant's own settings (`v1_robot` is flat, `v3_aspiration` default) and the sliders only for "custom". | The plot must match the audio. |
 
-Totals: 20 + 16 + 29 + 13 + 9 + 14 = 101, which equals the collected count.
+Totals: 21 + 16 + 29 + 15 + 9 + 14 = 104, which equals the collected count.
 
 ## 3. Validation notebooks
 
@@ -267,7 +270,7 @@ Use headphones for every live test, otherwise the output feeds back into the mic
 
        python run_live.py --in 1 --out 3
 
-   Give both `--in` and `--out`; if only one is given, the script falls back to the default devices (it prints "Using default input/output devices" but does not say that the given index was ignored).
+   You can give `--in`, `--out` or both; a side that is not given uses its default device, and the script prints which input and output it uses ("default" for an unspecified side).
 4. On Windows add `--wasapi` if the latency is high or the stream fails to open:
 
        python run_live.py --wasapi
@@ -345,7 +348,7 @@ When no recordings exist, check the whole chain on synthetic data. This needs Wi
 Before the day:
 
 - [ ] `git status` clean on `main`; everyone has pulled.
-- [ ] `python -m pytest tests -q` shows 101 passed.
+- [ ] `python -m pytest tests -q` shows 104 passed.
 - [ ] The four notebooks run without errors (section 3).
 - [ ] `python run_offline.py data/raw/shared_test.wav results/out.wav --variants` produces `out.wav` and four variant wavs; listen to all.
 - [ ] Real recordings exist: `data/raw/shared_test.wav` and at least a few `spkXX_sNN_whisper.wav` with transcripts. The repository currently has none, so the notebooks show the synthetic clip.

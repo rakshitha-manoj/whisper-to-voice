@@ -45,7 +45,12 @@ def make_callback(state, passthrough=False):
         if passthrough:
             outdata[:, 0] = block
             return
-        out, _ = process_hop_live(block, state)
+        try:
+            out, _ = process_hop_live(block, state)
+        except Exception as exc:
+            state["error_count"] = state.get("error_count", 0) + 1
+            state.setdefault("first_error", repr(exc))
+            out = np.zeros(len(block), dtype=np.float32)
         outdata[:, 0] = out
     return callback
 
@@ -58,6 +63,8 @@ def report_and_plot(state, stream_latency, path="results/latency.png"):
     print(f"Algorithmic delay {rep['algorithmic_ms']:.1f} ms, device latency {dev}, total {rep['total_ms']:.1f} ms")
     if state["timings"]:
         print(f"Latency plot saved to {plot_latency(state, path)}")
+    if state.get("error_count"):
+        print(f"Processing errors: {state['error_count']} hops output as silence (first: {state['first_error']})")
     if state.get("status_log"):
         print(f"Stream status events: {len(state['status_log'])} (e.g. {state['status_log'][0]})")
     return rep
@@ -75,11 +82,14 @@ def run_stream(sample_rate=FS, blocksize=HOP, device=None, params=None, passthro
         else:
             if device is None:
                 device = found
+            else:
+                device = tuple(f if d is None else d for d, f in zip(device, found))
             extra = _wasapi_settings()
     if device is None:
         print("Using default input/output devices. Use --list-devices, --in and --out to choose.")
     else:
-        print(f"Using input device {device[0]}, output device {device[1]}")
+        names = ["default" if d is None else d for d in device]
+        print(f"Using input device {names[0]}, output device {names[1]}")
     kwargs = dict(samplerate=sample_rate, blocksize=blocksize, dtype="float32", channels=1,
                   device=device, callback=make_callback(state, passthrough))
     if extra is not None:

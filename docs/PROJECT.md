@@ -301,7 +301,7 @@ The project is a classical LPC source-filter converter. Compared with a basic ve
 * **Noise and aspiration.** Background noise is part of the whisper and so shapes the LPC filter in active frames. In silent frames the excitation is exactly zero, so once the filter ringing has died away (a few hops, starting about 40 dB below speech) the output is digital silence, and the room's noise floor appears and disappears with the label. The aspiration weight is a constant and is not shaped per pitch cycle. Loudness is matched to the input RMS, which includes noise.
 * **Calibration needs silence at the start.** The live output is exactly zero during the first 0.3 s, so anything said then is lost. Because live uses the 10th percentile of the calibration hops, a few silent hops are enough: on the fixture, 50 ms of silence before speech still gave the normal threshold, but with 20 ms or less the threshold was set on speech (about 18 times too high) and most quiet speech was labelled silence. Offline, the 25th-percentile guard catches a clip that starts with speech. The live ZCR threshold starts from a default (0.12) and needs at least 0.5 s of speech to adapt.
 * **Offline output length.** Frames are 320 samples with a 160 hop, so the last 160 to 319 samples of a clip are not synthesised and are padded with zeros.
-* **Latency.** The algorithmic delay is 20 ms by the model in `latency_report`. Device buffers add to it and have not been measured on the demo machine. Processing runs inside the sound-device callback in Python; a slow or busy machine can underrun (single hops of tens of milliseconds have been seen in a test run). The callback has no exception guard.
+* **Latency.** The algorithmic delay is 20 ms by the model in `latency_report`. Device buffers add to it and have not been measured on the demo machine. Processing runs inside the sound-device callback in Python; a slow or busy machine can underrun (single hops of tens of milliseconds have been seen in a test run). If processing raises an exception in the callback, that hop is output as silence and the error is counted and printed after the stream stops, so the stream keeps running.
 * **The ablation has no impulse-train baseline.** All four variants use Rosenberg pulses, so the benefit of the pulse shape is not measured.
 * **Evaluation is small.** There are six sentences, one or a few speakers, an ASR (Whisper base) trained on voiced speech, and a small listening panel. The only table that exists is on synthetic data. LSD compares envelopes (including level and tilt) and is not a perceptual measure; WER depends on the ASR model.
 * **No learned model.** The output is audibly synthetic. There is no neural vocoder, no speaker identity, no automatic formant correction, and no handling of languages other than the English test sentences (Whisper is forced to English in the evaluation).
@@ -321,7 +321,7 @@ The project is a classical LPC source-filter converter. Compared with a basic ve
 See `README.md` for all commands and `docs/TESTING.md` for the test and verification procedures. The short version:
 
     pip install -r requirements.txt
-    python -m pytest tests -q                                  # 101 tests
+    python -m pytest tests -q                                  # 104 tests
     python run_offline.py in.wav out.wav --variants             # one file in, one file out, plus the four variants
     python run_live.py --list-devices                           # then: python run_live.py --in N --out M
     python run_live.py --file in.wav out.wav --play             # live code path without a microphone
@@ -346,7 +346,7 @@ Stay silent for the first 0.3 s of every clip or stream, and use headphones for 
 | `run_offline.py`, `run_live.py`, `run_eval.py`, `record.py` | Command-line entry points |
 | `app.py` | Gradio app (Convert, Analysis, Results); `app_a.py` is an older stand-alone Module A view |
 | `tools/make_dev_clip.py` | Synthetic dev clips from Windows SAPI TTS |
-| `tests/` | 101 pytest tests, `fixtures.py` (synthetic pseudo-whisper), `validate_module_a.py` (script) |
+| `tests/` | 104 pytest tests, `fixtures.py` (synthetic pseudo-whisper), `validate_module_a.py` (script) |
 | `notebooks/` | `a_framing_validation`, `b_lpc_validation`, `c_synthesis_validation`, `walkthrough` |
 | `data/raw/` | Recordings (git-ignored except `shared_test.wav` and `transcripts.txt`), `data/handoff/` for the handoff files |
 | `results/` | Generated wavs, figures and tables (not committed) |

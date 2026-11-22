@@ -179,3 +179,33 @@ def test_live_zcr_threshold_keeps_adapting_when_window_not_multiple_of_ten():
         if i == (4800 + len(low)) // 160:
             first = st["zcr_live"]
     assert st["zcr_live"] > first + 0.2
+
+
+def test_device_from_args_keeps_a_lone_in_or_out():
+    from types import SimpleNamespace
+    import run_live
+    pick = lambda i, o: run_live.device_from_args(SimpleNamespace(in_idx=i, out_idx=o))
+    assert pick(None, None) is None
+    assert pick(1, 3) == (1, 3)
+    assert pick(1, None) == (1, None)
+    assert pick(None, 3) == (None, 3)
+
+
+def test_stream_callback_survives_processing_error(monkeypatch):
+    import src.stream as stream
+    state = init_live_state()
+    real = stream.process_hop_live
+
+    def boom(block, st):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(stream, "process_hop_live", boom)
+    cb = stream.make_callback(state)
+    indata = np.full((160, 1), 0.1, dtype=np.float32)
+    outdata = np.ones((160, 1), dtype=np.float32)
+    cb(indata, outdata, 160, None, None)
+    assert not outdata.any()
+    assert state["error_count"] == 1 and "boom" in state["first_error"]
+    monkeypatch.setattr(stream, "process_hop_live", real)
+    cb(indata, outdata, 160, None, None)
+    assert state["error_count"] == 1 and state["hop_count"] == 1

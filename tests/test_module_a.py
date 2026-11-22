@@ -236,3 +236,18 @@ def test_dc_block_starts_in_steady_state_and_carries_state():
         yp, zi = dc_block(x[a:b], zi)
         parts.append(yp)
     np.testing.assert_allclose(np.concatenate(parts), one, atol=1e-6)
+
+
+def test_app_a_process_audio_runs(tmp_path, monkeypatch):
+    """app_a.py summary used an undefined noise_floor; process_audio must now complete."""
+    pytest.importorskip("gradio")
+    import app_a
+    from tests.fixtures import write_fixture
+    monkeypatch.setattr(app_a, "RESULTS_DIR", str(tmp_path))
+    wav = tmp_path / "fx.wav"
+    write_fixture(str(wav))
+    out = app_a.process_audio(audio_path=str(wav), silence_multiplier=3.0, zcr_threshold=0.33)
+    line = next(l for l in out["summary"].splitlines() if l.startswith("**Noise floor"))
+    floor = float(line.split(":")[-1])
+    assert np.isfinite(floor) and floor > 0
+    assert all(os.path.exists(out[k]) for k in ("waveform", "zoom", "labels", "features", "spectrogram"))

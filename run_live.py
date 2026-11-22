@@ -30,6 +30,13 @@ def params_from_args(args):
     return p
 
 
+def device_from_args(args):
+    """(input, output) device pair for sounddevice; None on one side means that side's default."""
+    if args.in_idx is None and args.out_idx is None:
+        return None
+    return (args.in_idx, args.out_idx)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Live whisper to voice conversion")
     parser.add_argument("--list-devices", action="store_true", help="List audio devices and exit")
@@ -53,8 +60,7 @@ def main(argv=None):
         return run_file(args)
 
     from src.stream import run_stream
-    device = (args.in_idx, args.out_idx) if args.in_idx is not None and args.out_idx is not None else None
-    run_stream(device=device, params=params_from_args(args), passthrough=args.passthrough, wasapi=args.wasapi)
+    run_stream(device=device_from_args(args), params=params_from_args(args), passthrough=args.passthrough, wasapi=args.wasapi)
     return 0
 
 
