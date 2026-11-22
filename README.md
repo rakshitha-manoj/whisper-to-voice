@@ -5,6 +5,8 @@ Converts whispered speech into voiced speech using source filter synthesis: LPC 
 
 Full details, tasks and prompts are in docs/whisper_to_voice_team_guide.pdf. Read INSTRUCTIONS.md for how to use this repo.
 
+Project description: docs/PROJECT.md. How to test (every test case listed): docs/TESTING.md. Viva preparation per module: docs/viva/module_a.md, module_b.md, module_c.md.
+
 ## Team and modules
 
 * Hafsa (Mac): Module A, src/framing.py, src/detect.py, src/stream.py, run_live.py

@@ -34,6 +34,12 @@ Offline loops the same per-hop step functions the live path calls (f0_step for l
 - notebooks/walkthrough.ipynb: end to end explainer (all stages, plots, audio, live vs offline, evaluation), committed with outputs
 - notebooks/{a,b,c}_*_validation.ipynb: rubric validation against librosa/scipy references
 
+## Docs
+- docs/PROJECT.md: project description (theory, architecture, design decisions, evaluation, dev results, novel contribution, limitations)
+- docs/TESTING.md: how to test, every test case, notebook/app/live/evaluation checklists
+- docs/viva/module_{a,b,c}.md: per member viva guides (theory, function walkthrough, weak spots, Q&A, cheat sheet)
+- docs/whisper_to_voice_team_guide.pdf: original spec
+
 ## Data
 - data/raw/: recordings (git ignored except shared_test.wav, transcripts.txt). Naming spk01_s03_whisper.wav / _normal.wav; sentence id maps to transcripts.txt line
 - results/: generated wavs, figures, tables (not committed)

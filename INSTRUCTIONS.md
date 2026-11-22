@@ -40,7 +40,11 @@ The branch with a star is the current one. If it is not yours, switch before you
         pip install -r requirements.txt
 
    If pip is not found, use pip3 on Mac or py followed by the same words on Windows.
-6. Check the repo runs. This should fail with NotImplementedError. That is correct, it means the stubs are in place:
+6. Check the repo runs. All modules are implemented now, so the test suite should pass (no recordings needed, it uses a synthetic clip). Full testing guide: docs/TESTING.md.
+
+        python -m pytest tests -q
+
+   Once data/raw/shared_test.wav has been recorded and committed (section 7), this also works:
 
         python run_offline.py data/raw/shared_test.wav results/out.wav
 
