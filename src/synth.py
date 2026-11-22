@@ -92,7 +92,7 @@ def _render(feats, volume=1.0, base_f0=120, decl=0.12, stress=0.25, jitter=0.005
     labels, energy, A, G = feats["labels"], feats["energy"], feats["A"], feats["G"]
     if warp is not None:
         from src.lpc import warp_poles
-        A = np.array([warp_poles(a, warp) for a in A])
+        A = np.array([warp_poles(a, warp) for a in A]).reshape(A.shape)
     f0 = build_f0(labels, energy, base_f0=base_f0, decl=decl, stress=stress, jitter=jitter, hop=hop)
     e = make_excitation(labels, f0, hop=hop, aspiration=aspiration)
     y_raw = synthesize(A, G, e, labels, energy, hop=hop)

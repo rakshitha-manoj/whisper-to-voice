@@ -37,7 +37,7 @@ Live demo (A7, A8). List devices, then pick input and output; on Windows add --w
     python run_live.py --passthrough                             # mic check only
     python run_live.py --file data/raw/shared_test.wav results/live.wav --play   # no mic: file through the live code path
 
-Gradio file mode with sliders (A10, and the demo fallback):
+Gradio app (A10, and the demo fallback). Tabs: Convert (sliders, A/B players, download, compare all variants), Analysis (Module A features and labels, Module B LPC envelope per frame), Results (ablation table, figures, variant players from run_eval.py):
 
     python app.py
 
@@ -47,6 +47,10 @@ Evaluation (C10): WER with Whisper base, LSD, ablation table, figures, listening
     python run_eval.py --listening                               # blinded sheet in results/listening/
     python run_eval.py --aggregate-listening results/listening/sheet.csv
     python run_eval.py --dev                                     # synthetic TTS dev clips (python tools/make_dev_clip.py first)
+
+Walkthrough notebook (every stage explained with plots and audio, for presenting the project; runs without recordings, sound devices or Whisper):
+
+    python -m jupyter nbconvert --to notebook --execute --inplace notebooks/walkthrough.ipynb
 
 Tests and validation notebooks:
 
@@ -64,7 +68,7 @@ Tests and validation notebooks:
     y = synthesize(A, G, e, labels, energy)          # lfilter with zi carried across hops
     y = output_stage(y, energy)                      # lip radiation, de-emphasis, DC blocker, per hop RMS match
 
-The live path (src/live.py) runs the same per hop step functions (f0_step, excitation_step, synth_step, output_step) one 160 sample block at a time, so offline and live produce the same sound.
+The live path (src/live.py) runs the same per hop step functions (excitation_step, synth_step, output_step) one 160 sample block at a time. What differs: causal labels (adaptive ZCR threshold, no median filter), f0_step instead of build_f0, the frame ending at the current hop, and a soft limiter instead of peak_protect. So live sounds like the offline output but is not sample identical.
 
 ## Function contract
 

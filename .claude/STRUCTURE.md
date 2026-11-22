@@ -22,14 +22,16 @@ Offline loops the same per-hop step functions the live path calls (f0_step for l
 - run_offline.py: one wav in, one wav out (optional variants)
 - run_eval.py: ablation table over data/raw/spk*_s*_whisper.wav -> results/
 - run_live.py: real time demo
-- app.py: Gradio file mode demo with sliders (fallback for the live demo)
+- app.py: tabbed Gradio app (fallback for the live demo): Convert (sliders, A/B, download, compare variants), Analysis (Module A features/labels, Module B per-frame LPC envelope), Results (reads results/**/ablation.md, figures, variant wavs). Pure helpers, gradio imported in build_app only
 - record.py: record a clip
 - tools/make_dev_clip.py: SAPI TTS sentences whisperised by LPC + noise -> results/dev (synthetic, pipeline check only)
-- app_a.py: Module A diagnostic Gradio view
+- app_a.py: Module A diagnostic Gradio view (older, standalone; app.py Analysis tab covers it)
 
 ## Tests and validation
 - tests/: pytest suite, run `python -m pytest tests -q`
+- tests/test_app.py: app.py helpers on the synthetic fixture
 - tests/fixtures.py: synthetic pseudo whisper (formant filtered noise) for tests without recordings
+- notebooks/walkthrough.ipynb: end to end explainer (all stages, plots, audio, live vs offline, evaluation), committed with outputs
 - notebooks/{a,b,c}_*_validation.ipynb: rubric validation against librosa/scipy references
 
 ## Data

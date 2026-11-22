@@ -373,3 +373,12 @@ def test_output_has_little_energy_below_60hz():
     out = synth.output_stage(y, np.full(n, 0.1))
     f, P = scipy.signal.welch(out[2000:], 16000, nperseg=4096)
     assert P[f < 60].sum() / P.sum() < 0.05
+
+
+@pytest.mark.parametrize("warp", [None, 0.92])
+def test_render_shorter_than_one_frame(warp):
+    """A clip with no full frame renders silence of the input length, with or without warp."""
+    feats = dict(fs=16000, n=200, energy=np.zeros(0), labels=np.zeros(0, dtype=int),
+                 A=np.zeros((0, 13)), G=np.zeros(0))
+    y = synth._render(feats, warp=warp)
+    assert y.shape == (200,) and np.all(np.isfinite(y)) and not np.any(y)
