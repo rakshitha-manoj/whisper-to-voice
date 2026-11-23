@@ -64,6 +64,19 @@ def discover_clips(raw_dir="data/raw", shared_ids=None):
     return clips
 
 
+def filter_speakers(clips, speakers):
+    """Keep clips whose speaker is in `speakers`. Ids may be given as 2, 02 or spk02; "shared" selects shared_test.wav.
+    None or an empty list keeps everything."""
+    if not speakers:
+        return clips
+    want = set()
+    for s in speakers:
+        s = str(s).strip().lower()
+        s = s[3:] if s.startswith("spk") else s
+        want.add(f"spk{int(s):02d}" if s.isdigit() else s)
+    return [c for c in clips if c["speaker"].lower() in want]
+
+
 def clip_stem(clip):
     return os.path.splitext(os.path.basename(clip["path"]))[0]
 

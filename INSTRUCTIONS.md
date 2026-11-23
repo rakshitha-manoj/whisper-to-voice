@@ -114,11 +114,11 @@ These are separate files that cannot conflict, so they go straight to main. Firs
 
 Use your own branch name in the last line.
 
-**Shared test clip.** One person (Raks) records a whispered clip of two sentences, 16 kHz mono, quiet room, headset mic about 3 cm from the mouth, headphones on:
+**Shared test clip.** One person (Hafsa) records the two whispered sentences 01 and 02 as one clip, 16 kHz mono, quiet room, headset mic 2 to 5 cm from the mouth, headphones on:
 
-    python record.py data/raw/shared_test.wav 8
+    python tools/record_session.py --shared
 
-Listen to it, then push it using the steps above. This is the one audio file that is committed. Your own recordings follow the naming spk01_s03_whisper.wav and spk01_s03_normal.wav (speaker, sentence number, style) and stay on your laptop, git ignores them.
+The script plays it back, warns about problems, and prints the git commands above. Setup and tips are in docs/RECORDING.md. Then push it using the steps above. This is the one audio file that is committed. Your own recordings follow the naming spk01_s03_whisper.wav and spk01_s03_normal.wav (speaker, sentence number, style) and stay on your laptop, git ignores them.
 
 **Handoff files, due end of Sat 14 Nov.** Once your module works on the shared test clip, save its outputs. Hafsa:
 

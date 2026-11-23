@@ -33,9 +33,9 @@ The automated suite, the notebooks and the app need no recordings. `data/raw/sha
 
 Expected result, verified on 2026-11-22 (Windows, Python 3.12):
 
-    132 passed in about 40 to 70 s
+    144 passed in about 40 to 70 s
 
-Allow roughly 20 to 45 seconds depending on the machine. If the count is not 132 (131 passed and 1 skipped if openai-whisper or its cached `base` model is absent), either a test file changed or something failed to import.
+Run time varies with the machine and its load (about 30 to 90 s seen on the development laptop). If the count is not 144 (143 passed and 1 skipped if openai-whisper or its cached `base` model is absent), either a test file changed or something failed to import.
 
 Notes:
 
@@ -149,17 +149,18 @@ These use the real Modules A, B and C on the pseudo-whisper fixture.
 | `test_live_fixed_zcr_threshold_param_overrides` | `zcr_thr=0.9` fixes the threshold: `zcr_live` stays at its initial 0.12 and no hop is labelled consonant. | The parameter overrides adaptation. |
 | `test_live_zcr_threshold_keeps_adapting_when_window_not_multiple_of_ten` | With `zcr_window_s=2.55`, a switch from low-ZCR to high-ZCR input raises `zcr_live` by more than 0.2. | Regression test: an earlier update counter stopped updating once the window was full. |
 
-### 2.5 tests/test_evaluate.py (evaluation tooling) - 9 tests
+### 2.5 tests/test_evaluate.py (evaluation tooling) - 10 tests
 
 None of these needs Whisper; the ASR is replaced by a stub where needed.
 
 | Test | What it checks | Why it matters |
 |---|---|---|
 | `test_load_transcripts_with_odd_line` | Lines "01 ..." and "02 ..." parse to ids "01", "02"; a line starting with "s01" is ignored with a `UserWarning`. | Tolerant transcript parsing. |
-| `test_load_real_transcripts` | `data/raw/transcripts.txt` parses to ids 01 to 20 (Harvard sentences), all non-empty, with no warning. Skipped if run from another directory. | Guards the real transcript file. |
+| `test_load_real_transcripts` | `data/raw/transcripts.txt` parses to ids 01 to 20 (01 to 06 Harvard sentences, 07 to 20 conversational), all non-empty, with no warning. Skipped if run from another directory. | Guards the real transcript file. |
 | `test_normalise_text` | Lower-casing, hyphen to space, punctuation removal, whitespace collapse. | WER should not penalise punctuation or case. |
 | `test_wer_counts` | Exact match gives (0, 3), empty hypothesis gives (3, 3), one substitution gives (1, 3). | Correct error and reference counts. |
 | `test_discover_clips` | Finds `shared_test.wav` (sentence ids 01 and 02) and `spkXX_sNN_whisper.wav`, pairs each with its `_normal.wav` when present, ignores other files, and returns [] for a missing folder. | Defines the recording naming convention. |
+| `test_filter_speakers` | `filter_speakers` (behind `run_eval.py --speakers`) keeps only the listed speakers; `2`, `02` and `spk02` mean the same; `shared` selects `shared_test.wav`; None or empty keeps all; an unknown id gives no clips. | Held-out speaker evaluation. |
 | `test_lsd_variant` | LSD of the fixture against itself is 0; against white noise (RMS 0.05) it exceeds 0.5 dB. | Sanity of the evaluation LSD. |
 | `test_run_ablation_eval_no_asr` | With `asr=False`: five systems (raw_whisper plus four variants), raw LSD 0 and variants above 0, writes `ablation_per_clip.csv`, `ablation.csv`, `ablation.md` and four variant wavs; the table header matches. | The whole evaluation flow minus Whisper. |
 | `test_run_ablation_eval_monkeypatched_asr` | With a stub ASR that always returns "the birch canoe" for the reference "The birch canoe slid" (4 words): WER is 0.25, per clip and corpus. | Checks the WER bookkeeping. |
@@ -208,7 +209,25 @@ These test the pure helper functions on the fixture. The browser layer is covere
 | `test_live_run_requires_clip` | No clip raises `ValueError`. | Friendly error. |
 | `test_live_tab_player_not_interactive` | The "Live path output" player is `interactive=False`. | It is an output only. |
 
-Totals: 21 + 16 + 29 + 15 + 9 + 42 = 132, which equals the collected count.
+### 2.7 tests/test_record_session.py (guided recording script) - 11 tests
+
+`tools/record_session.py` with fake `rec`, `play` and `ask` functions and a temporary data directory (`--data-dir`). No sound device is used and the real `data/raw` is never touched.
+
+| Test | What it checks | Why it matters |
+|---|---|---|
+| `test_records_all_names_for_speaker` | Keeping every take for `--speaker 2` writes exactly the 40 files `spk02_sNN_{whisper,normal}.wav`, no `.part` leftovers, and the summary says 40 of 40; `speaker_id` maps 2, 02 and spk02 to 02 and rejects abc, 0 and 100. | File naming that `discover_clips` relies on. |
+| `test_keep_writes_16k_mono_right_length` | A kept 3 s take is a 16 kHz mono PCM_16 wav of 48000 frames; Ctrl-C while saving leaves no `.part` file. | Pipeline input contract. |
+| `test_redo_then_keep_writes_once` | Redo records again, "play again" plays again, and only one file results; the "...speak now" cue appears only once the recorder reports that capture has started. | Keep/redo loop. |
+| `test_skip_writes_nothing` | Skipping after a take and at the prompt writes no file. | Skip is safe. |
+| `test_existing_skipped_unless_redo` | An existing file is not recorded again (message shown, file untouched); with `--redo` it is replaced. | Resume after a break. |
+| `test_only_from_and_styles` | `--only 07 12 --styles normal` gives exactly two files; `select_ids` handles `from`, zero padding and unknown ids. | Redoing single takes. |
+| `test_quality_checks` | A clean padded pseudo-whisper take gives no warning, also with a DC offset or scaled down to a soft whisper (about -47 dBFS speech level); clipping, silence, speech in the first 0.3 s and sound in the last 0.3 s each give their warning. | Take quality thresholds. |
+| `test_warnings_shown_but_keep_allowed` | A silent take prints the "Too quiet" warning and can still be kept. | Warnings advise, the user decides. |
+| `test_quit_midway_no_partial_files_and_summary` | Quitting after one file leaves only that file; the summary says 1 of 40 and lists the missing ones. | Clean exit. |
+| `test_zip_contains_only_that_speaker` | `--zip` contains only that speaker's wavs (not other speakers, not `shared_test.wav`). | What gets sent to Raks. |
+| `test_shared_mode` | `--shared` writes a 12 s `shared_test.wav`, shows sentences 01 and 02, prints the git commands and writes no speaker file; Ctrl-C during it prints no speaker summary. | Hafsa's shared clip. |
+
+Totals: 21 + 16 + 29 + 15 + 10 + 42 + 11 = 144, which equals the collected count.
 
 ## 3. Validation notebooks
 
@@ -334,11 +353,11 @@ Use headphones for every live test, otherwise the output feeds back into the mic
 
 Record 16 kHz mono clips with headphones on, quiet room, mic 2 to 5 cm from the mouth, and stay silent for the first 0.3 s.
 
-    python record.py data/raw/shared_test.wav 12                 # sentences 01 and 02 back to back, whispered
-    python record.py data/raw/spk01_s03_whisper.wav 5            # speaker 01, sentence 03, whispered
-    python record.py data/raw/spk01_s03_normal.wav 5             # same sentence, spoken normally
+    python tools/record_session.py --speaker 01                  # guided: all 20 sentences, whispered and normal (docs/RECORDING.md)
+    python tools/record_session.py --shared                      # shared_test.wav, sentences 01 and 02 whispered
+    python record.py data/raw/spk01_s03_whisper.wav 5            # single clip, the simple recorder
 
-Naming: `spkXX_sNN_whisper.wav` and `spkXX_sNN_normal.wav`, where XX is the speaker and NN is the line number in `data/raw/transcripts.txt`. Each line of `transcripts.txt` is "NN sentence text". Currently ids 01 to 06 are the Harvard sentences; the last line (`s01 Hey, how are you?`) does not start with a number and is ignored with a warning, which is expected. The `_normal.wav` is optional; when it exists it gives a `normal_recording` row in the table (the ASR ceiling). `shared_test.wav` is read as sentences 01 and 02 together. Recordings in `data/raw/` stay local and are git-ignored, except `shared_test.wav`, which is meant to be committed. The team guide asks for 20 sentences per member; the transcripts file has 6 so far. Split by speaker for tuning and testing as the guide says.
+Naming: `spkXX_sNN_whisper.wav` and `spkXX_sNN_normal.wav`, where XX is the speaker and NN is the line number in `data/raw/transcripts.txt`. Each line of `transcripts.txt` is "NN sentence text". Ids 01 to 06 are Harvard sentences and 07 to 20 are conversational sentences (4 are questions). A line that does not start with a number would be ignored with a warning. The `_normal.wav` is optional; when it exists it gives a `normal_recording` row in the table (the ASR ceiling). `shared_test.wav` is read as sentences 01 and 02 together. Recordings in `data/raw/` stay local and are git-ignored, except `shared_test.wav`, which is meant to be committed. Each of the three speakers (spk01 Hafsa, spk02 Akhila, spk03 Raks) records all 20 sentences in both styles. Split by speaker for tuning and testing as the guide says: tune on spk01 and spk03, report on spk02 (`python run_eval.py --speakers 02`).
 
 ### Run
 
@@ -383,7 +402,7 @@ When no recordings exist, check the whole chain on synthetic data. This needs Wi
 Before the day:
 
 - [ ] `git status` clean on `main`; everyone has pulled.
-- [ ] `python -m pytest tests -q` shows 132 passed (131 passed, 1 skipped without the cached Whisper base model).
+- [ ] `python -m pytest tests -q` shows 144 passed (143 passed, 1 skipped without the cached Whisper base model).
 - [ ] The four notebooks run without errors (section 3).
 - [ ] `python run_offline.py data/raw/shared_test.wav results/out.wav --variants` produces `out.wav` and four variant wavs; listen to all.
 - [ ] Real recordings exist: `data/raw/shared_test.wav` and at least a few `spkXX_sNN_whisper.wav` with transcripts. The repository currently has none, so the notebooks show the synthetic clip.

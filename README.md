@@ -22,9 +22,13 @@ Use headphones for every live test. When recording or starting the live stream, 
 
 ## How to run
 
-Record (16 kHz mono):
+Record (16 kHz mono). Guided session for all 20 sentences, whispered and normal (instructions for the three recorders: docs/RECORDING.md):
 
-    python record.py data/raw/shared_test.wav 12                # whisper sentences 01 and 02
+    python tools/record_session.py --speaker 02                 # spk01 Hafsa, spk02 Akhila, spk03 Raks
+    python tools/record_session.py --shared                     # shared_test.wav, whisper sentences 01 and 02 (Hafsa)
+
+Single clip with the simple recorder:
+
     python record.py data/raw/spk01_s03_whisper.wav 5           # spkXX_sNN_{whisper,normal}.wav, NN = line in transcripts.txt
 
 Offline, one file in, one file out (C8), optionally all ablation variants into results/ (C9):
@@ -46,6 +50,7 @@ Gradio app (A10, and the demo fallback). Tabs: Convert (sliders, A/B players, do
 Evaluation (C10): WER with Whisper base, LSD, ablation table, figures, listening test:
 
     python run_eval.py                                           # writes results/ablation.md, results/figures/
+    python run_eval.py --speakers 02                             # only speaker 02 (held-out); add "shared" to include shared_test.wav
     python run_eval.py --listening                               # blinded sheet in results/listening/
     python run_eval.py --aggregate-listening results/listening/sheet.csv
     python run_eval.py --dev                                     # synthetic TTS dev clips (python tools/make_dev_clip.py first)

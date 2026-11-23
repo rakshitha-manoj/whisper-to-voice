@@ -10,3 +10,4 @@ data/raw/*
 !data/raw/transcripts.txt
 results/*
 !results/.gitkeep
+*_recordings.zip

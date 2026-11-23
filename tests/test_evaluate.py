@@ -53,6 +53,22 @@ def test_discover_clips(tmp_path):
     assert ev.discover_clips(str(tmp_path / "nothing")) == []
 
 
+def test_filter_speakers(tmp_path):
+    for name in ["shared_test.wav", "spk01_s03_whisper.wav", "spk02_s03_whisper.wav", "spk03_s04_whisper.wav"]:
+        (tmp_path / name).write_bytes(b"")
+    clips = ev.discover_clips(str(tmp_path))
+
+    def stems(sp):
+        return {ev.clip_stem(c) for c in ev.filter_speakers(clips, sp)}
+
+    assert stems(None) == stems([]) == {ev.clip_stem(c) for c in clips}
+    assert stems(["02"]) == {"spk02_s03_whisper"}
+    assert stems(["2"]) == stems(["spk02"]) == {"spk02_s03_whisper"}
+    assert stems(["01", "03"]) == {"spk01_s03_whisper", "spk03_s04_whisper"}
+    assert stems(["02", "shared"]) == {"spk02_s03_whisper", "shared_test"}
+    assert stems(["09"]) == set()
+
+
 def test_lsd_variant():
     x, _ = pseudo_whisper()
     assert ev.lsd_variant(x, x) == pytest.approx(0.0, abs=1e-9)

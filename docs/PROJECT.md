@@ -303,7 +303,7 @@ The project is a classical LPC source-filter converter. Compared with a basic ve
 * **Offline output length.** Frames are 320 samples with a 160 hop, so the last 160 to 319 samples of a clip are not synthesised and are padded with zeros.
 * **Latency.** The algorithmic delay is 20 ms by the model in `latency_report`. Device buffers add to it and have not been measured on the demo machine. Processing runs inside the sound-device callback in Python; a slow or busy machine can underrun (single hops of tens of milliseconds have been seen in a test run). If processing raises an exception in the callback, that hop is output as silence and the error is counted and printed after the stream stops, so the stream keeps running.
 * **The ablation has no impulse-train baseline.** All four variants use Rosenberg pulses, so the benefit of the pulse shape is not measured.
-* **Evaluation is small.** There are 20 Harvard sentences per speaker (whispered and normal), one to three speakers, an ASR (Whisper base) trained on voiced speech, and a small listening panel. The only table that exists is on synthetic data. LSD compares envelopes (including level and tilt) and is not a perceptual measure; WER depends on the ASR model.
+* **Evaluation is small.** The data set is 20 sentences per speaker (6 Harvard sentences and 14 conversational ones, 4 of them questions), each whispered and spoken normally, from three speakers; one speaker (spk02) is held out for reporting while the others are used for tuning, an ASR (Whisper base) trained on voiced speech, and a small listening panel. The only table that exists is on synthetic data. LSD compares envelopes (including level and tilt) and is not a perceptual measure; WER depends on the ASR model.
 * **No learned model.** The output is audibly synthetic. There is no neural vocoder, no speaker identity, no automatic formant correction, and no handling of languages other than the English test sentences (Whisper is forced to English in the evaluation).
 * **Recordings are missing from the repository.** The committed notebooks therefore show the synthetic fixture, and real-recording results are pending.
 
@@ -321,7 +321,7 @@ The project is a classical LPC source-filter converter. Compared with a basic ve
 See `README.md` for all commands and `docs/TESTING.md` for the test and verification procedures. The short version:
 
     pip install -r requirements.txt
-    python -m pytest tests -q                                  # 132 tests
+    python -m pytest tests -q                                  # 144 tests
     python run_offline.py in.wav out.wav --variants             # one file in, one file out, plus the four variants
     python run_live.py --list-devices                           # then: python run_live.py --in N --out M
     python run_live.py --file in.wav out.wav --play             # live code path without a microphone
@@ -346,7 +346,7 @@ Stay silent for the first 0.3 s of every clip or stream, and use headphones for 
 | `run_offline.py`, `run_live.py`, `run_eval.py`, `record.py` | Command-line entry points |
 | `app.py` | Gradio app (Convert incl. Transcribe, Source and loudness and Variant comparison graphs; Analysis incl. poles and formants; Live; Results); `app_a.py` is an older stand-alone Module A view |
 | `tools/make_dev_clip.py` | Synthetic dev clips from Windows SAPI TTS |
-| `tests/` | 132 pytest tests, `fixtures.py` (synthetic pseudo-whisper), `validate_module_a.py` (script) |
+| `tests/` | 144 pytest tests, `fixtures.py` (synthetic pseudo-whisper), `validate_module_a.py` (script) |
 | `notebooks/` | `a_framing_validation`, `b_lpc_validation`, `c_synthesis_validation`, `walkthrough` |
 | `data/raw/` | Recordings (git-ignored except `shared_test.wav` and `transcripts.txt`), `data/handoff/` for the handoff files |
 | `results/` | Generated wavs, figures and tables (not committed) |

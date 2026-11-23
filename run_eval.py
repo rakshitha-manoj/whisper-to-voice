@@ -11,6 +11,8 @@ def main():
     ap.add_argument("--results", default="results")
     ap.add_argument("--no-asr", action="store_true")
     ap.add_argument("--model", default="base")
+    ap.add_argument("--speakers", nargs="+", metavar="ID",
+                    help='only these speakers, e.g. --speakers 02 or --speakers 01 03; add "shared" to include shared_test.wav')
     ap.add_argument("--dev", action="store_true", help="use synthetic clips from results/dev (tools/make_dev_clip.py)")
     ap.add_argument("--listening", action="store_true", help="create the blinded listening sheet")
     ap.add_argument("--aggregate-listening", metavar="SHEET")
@@ -26,16 +28,16 @@ def main():
         return 0
 
     raw_dir = os.path.join(args.results, "dev") if args.dev else args.raw_dir
-    clips = ev.discover_clips(raw_dir)
+    clips = ev.filter_speakers(ev.discover_clips(raw_dir), args.speakers)
     if not clips:
-        if args.dev:
+        if args.speakers:
+            print(f"No clips for speakers {' '.join(args.speakers)} in {raw_dir}.")
+        elif args.dev:
             print("No dev clips found. Run: python tools/make_dev_clip.py")
         else:
             print(f"No recordings found in {raw_dir}. Record them (16 kHz mono) with:")
-            print("  python record.py data/raw/shared_test.wav 12   # sentences 01 and 02 back to back, whispered")
-            for n in range(1, 7):
-                print(f"  python record.py data/raw/spk01_s{n:02d}_whisper.wav 5")
-                print(f"  python record.py data/raw/spk01_s{n:02d}_normal.wav 5")
+            print("  python tools/record_session.py --speaker 01     # all 20 sentences, whispered and normal")
+            print("  python tools/record_session.py --shared         # shared_test.wav (whispered sentences 01 and 02)")
             print("Then run: python run_eval.py")
         return 0
 

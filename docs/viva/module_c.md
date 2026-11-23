@@ -290,7 +290,7 @@ Input: one 160-sample block; output: one 160-sample block.
 
 ### 6.1 Data
 
-- Real data (not in this repo copy; `data/raw/` contains only `transcripts.txt`): `data/raw/spkNN_sMM_whisper.wav` with optional `_normal.wav`, and `shared_test.wav` (sentences 01 and 02). Sentences are the Harvard sentences (spec 1.4): "The birch canoe slid on the smooth planks." etc., in `data/raw/transcripts.txt` (6 lines + one ignored line `s01 Hey, how are you?`).
+- Real data (not in this repo copy; `data/raw/` contains only `transcripts.txt`): `data/raw/spkNN_sMM_whisper.wav` with optional `_normal.wav`, and `shared_test.wav` (sentences 01 and 02). Sentences are in `data/raw/transcripts.txt`: 01 to 06 Harvard sentences (spec 1.4, "The birch canoe slid on the smooth planks." etc.) and 07 to 20 conversational sentences.
 - **Dev clips (`tools/make_dev_clip.py`)**: **SYNTHETIC**. Uses Windows SAPI text-to-speech (via PowerShell) to speak the transcript sentences, scales to peak 0.3, pads 0.5 s of silence each end, then `whisperize`: per 10 ms hop, an LPC (order 12) filter is fitted to the TTS speech and white noise is filtered through it (state carried), then a $1/(1-0.97z^{-1})$ filter (de-emphasis; note the variable naming), and per-hop RMS is matched to the TTS speech. A noise floor of $5\times10^{-4}$ is added. Output `results/dev/dev_sNN_whisper.wav` and `_normal.wav` (the "normal" is the TTS speech itself). Purpose: **pipeline check only, not results**: it exercises ASR, LSD, figures and the app when no recordings exist. It is an LPC-noise whisper, i.e. exactly the model the system assumes, so it says nothing about real whispers.
 
 ### 6.2 WER with Whisper
