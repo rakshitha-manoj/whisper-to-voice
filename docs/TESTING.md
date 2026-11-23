@@ -156,7 +156,7 @@ None of these needs Whisper; the ASR is replaced by a stub where needed.
 | Test | What it checks | Why it matters |
 |---|---|---|
 | `test_load_transcripts_with_odd_line` | Lines "01 ..." and "02 ..." parse to ids "01", "02"; a line starting with "s01" is ignored with a `UserWarning`. | Tolerant transcript parsing. |
-| `test_load_real_transcripts` | `data/raw/transcripts.txt` parses to ids 01 to 06 (with the same warning for the "s01" line). Skipped if run from another directory. | Guards the real transcript file. |
+| `test_load_real_transcripts` | `data/raw/transcripts.txt` parses to ids 01 to 20 (Harvard sentences), all non-empty, with no warning. Skipped if run from another directory. | Guards the real transcript file. |
 | `test_normalise_text` | Lower-casing, hyphen to space, punctuation removal, whitespace collapse. | WER should not penalise punctuation or case. |
 | `test_wer_counts` | Exact match gives (0, 3), empty hypothesis gives (3, 3), one substitution gives (1, 3). | Correct error and reference counts. |
 | `test_discover_clips` | Finds `shared_test.wav` (sentence ids 01 and 02) and `spkXX_sNN_whisper.wav`, pairs each with its `_normal.wav` when present, ignores other files, and returns [] for a missing folder. | Defines the recording naming convention. |

@@ -21,9 +21,12 @@ def test_load_transcripts_with_odd_line(tmp_path):
 def test_load_real_transcripts():
     if not os.path.isfile("data/raw/transcripts.txt"):
         pytest.skip("no transcripts")
-    with pytest.warns(UserWarning):
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         tr = ev.load_transcripts("data/raw/transcripts.txt")
-    assert set(tr) == {"01", "02", "03", "04", "05", "06"}
+    assert set(tr) == {f"{i:02d}" for i in range(1, 21)}
+    assert all(tr[k].strip() for k in tr)
 
 
 def test_normalise_text():
