@@ -10,5 +10,5 @@ pystoi
 pytest
 nbformat
 nbconvert
-# openai-whisper  (only needed for WER evaluation)
+# openai-whisper  (only needed for WER evaluation and the app's Transcribe button)
 ipykernel

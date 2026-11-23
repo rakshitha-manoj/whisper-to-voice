@@ -139,7 +139,7 @@ The three per-hop step functions `excitation_step`, `synth_step` and `output_ste
 
 ### 3.5 Gradio app and walkthrough notebook
 
-`app.py` is a tabbed Gradio app and the fallback demo when the live stream cannot be used. Convert: upload or record a clip, choose a variant or the sliders (base pitch 70 to 250 Hz, declination, stress, aspiration, pole warp 0.85 to 1.0, volume), listen to input and output, see spectrograms and the label and f0 plot, download the wav, compare all variants. Analysis: Module A features and labels with adjustable thresholds, and Module B's LPC envelope for any frame. Results: tables, figures and variant players produced by `run_eval.py`. The app's helpers are pure functions that are covered by tests; Gradio is imported only when the app is built.
+`app.py` is a tabbed Gradio app and the fallback demo when the live stream cannot be used. Convert: upload or record a clip, choose a variant or the sliders (base pitch 70 to 250 Hz, declination, stress, aspiration, pole warp 0.85 to 1.0, volume), listen to input and output, see spectrograms and the label and f0 plot, download the wav, compare all variants, and press Transcribe to run the Whisper ASR model (tiny, base or small, on CPU) on the input and on the voiced output shown in the player, side by side, with word error rate for each if a reference sentence is typed (reusing `evaluate.transcribe` and `wer_counts`). On the synthetic dev set Whisper recognised the raw whispered clips better than the voiced output, so the Transcribe button may well show the input transcript as the better one; that is a real result of the current synthesis, not a bug in the button. Analysis: Module A features and labels with adjustable thresholds, and Module B's LPC envelope for any frame. Results: tables, figures and variant players produced by `run_eval.py`. The app's helpers are pure functions that are covered by tests; Gradio is imported only when the app is built.
 
 `notebooks/walkthrough.ipynb` runs every stage on one clip with plots, audio and explanations, including the live versus offline proof and the LSD per variant. It runs without recordings, devices or Whisper.
 
@@ -321,7 +321,7 @@ The project is a classical LPC source-filter converter. Compared with a basic ve
 See `README.md` for all commands and `docs/TESTING.md` for the test and verification procedures. The short version:
 
     pip install -r requirements.txt
-    python -m pytest tests -q                                  # 104 tests
+    python -m pytest tests -q                                  # 112 tests
     python run_offline.py in.wav out.wav --variants             # one file in, one file out, plus the four variants
     python run_live.py --list-devices                           # then: python run_live.py --in N --out M
     python run_live.py --file in.wav out.wav --play             # live code path without a microphone
@@ -344,9 +344,9 @@ Stay silent for the first 0.3 s of every clip or stream, and use headphones for 
 | `src/evaluate.py` | Transcripts, clip discovery, Whisper ASR, WER, LSD per variant, ablation tables, listening sheet and aggregation, report figures |
 | `src/mocks.py` | Mock inputs for testing one module alone |
 | `run_offline.py`, `run_live.py`, `run_eval.py`, `record.py` | Command-line entry points |
-| `app.py` | Gradio app (Convert, Analysis, Results); `app_a.py` is an older stand-alone Module A view |
+| `app.py` | Gradio app (Convert incl. Transcribe, Analysis, Results); `app_a.py` is an older stand-alone Module A view |
 | `tools/make_dev_clip.py` | Synthetic dev clips from Windows SAPI TTS |
-| `tests/` | 104 pytest tests, `fixtures.py` (synthetic pseudo-whisper), `validate_module_a.py` (script) |
+| `tests/` | 112 pytest tests, `fixtures.py` (synthetic pseudo-whisper), `validate_module_a.py` (script) |
 | `notebooks/` | `a_framing_validation`, `b_lpc_validation`, `c_synthesis_validation`, `walkthrough` |
 | `data/raw/` | Recordings (git-ignored except `shared_test.wav` and `transcripts.txt`), `data/handoff/` for the handoff files |
 | `results/` | Generated wavs, figures and tables (not committed) |

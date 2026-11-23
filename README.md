@@ -16,7 +16,7 @@ Project description: docs/PROJECT.md. How to test (every test case listed): docs
 ## Setup
 
     pip install -r requirements.txt
-    pip install openai-whisper        # only for the WER evaluation
+    pip install openai-whisper        # only for the WER evaluation and the app's Transcribe button
 
 Use headphones for every live test. When recording or starting the live stream, stay silent for the first 0.3 s: the silence threshold is calibrated from it.
 
@@ -39,7 +39,7 @@ Live demo (A7, A8). List devices, then pick input and output; on Windows add --w
     python run_live.py --passthrough                             # mic check only
     python run_live.py --file data/raw/shared_test.wav results/live.wav --play   # no mic: file through the live code path
 
-Gradio app (A10, and the demo fallback). Tabs: Convert (sliders, A/B players, download, compare all variants), Analysis (Module A features and labels, Module B LPC envelope per frame), Results (ablation table, figures, variant players from run_eval.py):
+Gradio app (A10, and the demo fallback). Tabs: Convert (sliders, A/B players, download, compare all variants, Transcribe input and output with Whisper ASR and optional WER against a reference sentence), Analysis (Module A features and labels, Module B LPC envelope per frame), Results (ablation table, figures, variant players from run_eval.py):
 
     python app.py
 

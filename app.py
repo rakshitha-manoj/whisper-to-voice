@@ -3,6 +3,7 @@
 import glob
 import os
 import tempfile
+import threading
 
 import numpy as np
 
@@ -15,7 +16,16 @@ NO_RESULTS = "No results found. Run `python run_eval.py` (or `python run_eval.py
 TOO_SHORT = "Clip is shorter than one 20 ms frame (320 samples at 16 kHz); record or upload a longer clip."
 LIVE_NOTE = ("Live mode runs from the command line: `python run_live.py --list-devices`, "
              "then `python run_live.py --in N --out M`.")
+ASR_MODELS = ["tiny", "base", "small"]
+ASR_NOTE = ("Transcription uses the OpenAI Whisper speech recognition model (ASR) on the CPU. "
+            "This is not whispered speech: it is just the name of the recogniser. The first use of a model "
+            "downloads it, and each clip then takes a few seconds. The output transcript is of the audio "
+            "currently in the voiced output player; if Convert has not been pressed for this clip, the output "
+            "is rendered from the current settings instead.")
+NO_WHISPER = "openai-whisper is not installed. Run `pip install openai-whisper` and restart the app."
 _CACHE = {}
+_ASR_CACHE = {}
+_ASR_LOCK = threading.RLock()
 
 
 def demo_clip_path():
@@ -51,6 +61,83 @@ def render(path, variant="custom", base_f0=120, decl=0.12, stress=0.25, aspirati
         w = None if warp is None or warp >= 1.0 else float(warp)
         y = _render(feats, volume=volume, base_f0=base_f0, decl=decl, stress=stress, aspiration=aspiration, warp=w)
     return y, feats
+
+
+def get_asr(model_name="base"):
+    """Whisper ASR model, loaded once per name. The lock stops two workers loading (or downloading) it together."""
+    if model_name not in ASR_MODELS:
+        raise ValueError(f"Unknown model {model_name!r}; choose one of {', '.join(ASR_MODELS)}.")
+    with _ASR_LOCK:
+        model = _ASR_CACHE.get(model_name)
+        if model is None:
+            from src import evaluate
+            try:
+                model = evaluate.load_asr(model_name)
+            except ImportError as e:
+                raise ValueError(NO_WHISPER) from e
+            _ASR_CACHE[model_name] = model
+        return model
+
+
+def output_signal(out_audio):
+    """Float 16 kHz signal from the Gradio output player value (fs, array); int16 is scaled to +-1."""
+    fs, y = out_audio
+    y = np.asarray(y)
+    if y.ndim > 1:
+        y = y.mean(axis=1)
+    if np.issubdtype(y.dtype, np.integer):
+        y = y.astype(np.float32) / float(np.iinfo(y.dtype).max + 1)
+    if int(fs) != FS:
+        raise ValueError(f"Output audio is {fs} Hz; expected {FS} Hz. Press Convert again.")
+    return y.astype(np.float32)
+
+
+def transcribe_clip(audio_path, model_name="base", reference="", out_audio=None, shown_input=None,
+                    variant="custom", base_f0=120, decl=0.12, stress=0.25, aspiration=0.15, warp=1.0, volume=1.0):
+    """Transcribe the whisper input and the voiced output. Returns dict(input, output, wer) (wer None without a reference).
+
+    The output is exactly what the output player holds (so it matches what the user hears) when that player was
+    filled from this clip. Otherwise (no Convert yet, or the clip changed since) it is rendered now from the
+    current variant and sliders.
+    """
+    if not audio_path:
+        raise ValueError("Upload or record a clip first, or press Load demo clip.")
+    from src import evaluate
+    from src.framing import load_audio
+    x, _ = load_audio(audio_path)
+    if out_audio is not None and shown_input == audio_path:
+        y = output_signal(out_audio)
+    else:
+        y, _ = render(audio_path, variant, base_f0, decl, stress, aspiration, warp, volume)
+    model = get_asr(model_name)  # after the clip checks, so a bad clip fails before any model load or download
+    with _ASR_LOCK:
+        text_in = evaluate.transcribe(model, x)
+        text_out = evaluate.transcribe(model, y)
+    wer = None
+    if reference and reference.strip():
+        wer = {}
+        for key, text in (("input", text_in), ("output", text_out)):
+            errors, n_ref = evaluate.wer_counts(reference, text)
+            wer[key] = (errors, n_ref)
+    return dict(input=text_in, output=text_out, wer=wer)
+
+
+def transcript_markdown(res):
+    """Side by side table of the two transcripts, with WER rows when a reference was given."""
+    def cell(t):
+        return (t or "(nothing recognised)").replace("|", "/").replace("\n", " ")
+    lines = ["| | Input (whisper) | Voiced output |", "|---|---|---|",
+             f"| Transcript | {cell(res['input'])} | {cell(res['output'])} |"]
+    if res["wer"]:
+        def w(key):
+            e, n = res["wer"][key]
+            return f"{e}/{n} = {100.0 * e / n:.1f}%" if n else "n/a"
+        lines.append(f"| WER (errors/reference words) | {w('input')} | {w('output')} |")
+    return "\n".join(lines)
+
+
+def transcribe_ui(audio_path, model_name, reference, out_audio, shown_input, *render_args):
+    return transcript_markdown(transcribe_clip(audio_path, model_name, reference, out_audio, shown_input, *render_args))
 
 
 def spectrogram_figure(x, y, fs=FS):
@@ -303,24 +390,40 @@ def build_app():
                         volume = gr.Slider(0.2, 2.0, value=1.0, step=0.05, label="Volume")
                         go = gr.Button("Convert", variant="primary")
                         cmp_btn = gr.Button("Compare all variants")
+                        gr.Markdown("### Transcribe (speech to text)")
+                        asr_model = gr.Dropdown(ASR_MODELS, value="base", label="Whisper ASR model")
+                        reference = gr.Textbox(label="Reference sentence (optional, for WER)")
+                        tr_btn = gr.Button("Transcribe")
+                        gr.Markdown(ASR_NOTE)
                         gr.Markdown(LIVE_NOTE)
                     with gr.Column():
                         with gr.Row():
                             in_audio = gr.Audio(label="Input (A)", type="filepath", interactive=False)
-                            out_audio = gr.Audio(label="Voiced output (B)", type="numpy")
+                            # interactive=False: it is also a Transcribe input, which would otherwise make it an upload box
+                            out_audio = gr.Audio(label="Voiced output (B)", type="numpy", interactive=False)
                         download = gr.File(label="Download output wav")
                         spec = gr.Plot(label="Spectrograms")
                         lab = gr.Plot(label="Labels and f0")
+                        transcripts = gr.Markdown(label="Transcripts")
                         cmp_players = [gr.Audio(label="custom (sliders)" if name == "custom" else name, type="numpy")
                                        for name in VARIANT_CHOICES]
                 params = [audio, variant, base_f0, decl, stress, aspiration, warp, volume]
                 demo_btn.click(demo_clip_path, outputs=audio)
-                go.click(friendly(convert_full), params, [out_audio, spec, lab, in_audio, download])
+                converted_from = gr.State(None)
+
+                def convert_tracked(*args):
+                    return (*convert_full(*args), args[0])
+
+                go.click(friendly(convert_tracked), params, [out_audio, spec, lab, in_audio, download, converted_from])
+                # A new input clip makes the previous output stale: clear it so player and transcript never disagree
+                audio.change(lambda: (None, None, None, None), outputs=[out_audio, in_audio, download, converted_from])
 
                 def compare(path, _variant, *sliders):
                     return [r[1] for r in compare_variants(path, *sliders)]
 
                 cmp_btn.click(friendly(compare), params, cmp_players)
+                tr_btn.click(friendly(transcribe_ui), [audio, asr_model, reference, out_audio, converted_from, *params[1:]],
+                             transcripts)
 
             with gr.Tab("Analysis"):
                 gr.Markdown("Uses the clip loaded on the Convert tab.")

@@ -12,7 +12,7 @@ Python 3.10 or newer.
 
 `requirements.txt` installs numpy, scipy, matplotlib, soundfile, sounddevice, librosa, gradio, jiwer, pystoi, pytest, nbformat, nbconvert and ipykernel. (`pystoi` is installed because the team guide lists it, but no code in the repository imports it.)
 
-`openai-whisper` is optional and is needed only for the WER part of `run_eval.py`:
+`openai-whisper` is optional and is needed only for the WER part of `run_eval.py` and the Transcribe button in `app.py`:
 
     pip install openai-whisper
 
@@ -33,9 +33,9 @@ The automated suite, the notebooks and the app need no recordings. `data/raw/sha
 
 Expected result, verified on 2026-11-22 (Windows, Python 3.12):
 
-    104 passed in 29.68s
+    112 passed in about 35 to 65 s
 
-Allow roughly 20 to 45 seconds depending on the machine. If the count is not 104, either a test file changed or something failed to import.
+Allow roughly 20 to 45 seconds depending on the machine. If the count is not 112 (111 passed and 1 skipped if openai-whisper or its cached `base` model is absent), either a test file changed or something failed to import.
 
 Notes:
 
@@ -165,7 +165,7 @@ None of these needs Whisper; the ASR is replaced by a stub where needed.
 | `test_run_ablation_eval_monkeypatched_asr` | With a stub ASR that always returns "the birch canoe" for the reference "The birch canoe slid" (4 words): WER is 0.25, per clip and corpus. | Checks the WER bookkeeping. |
 | `test_listening_sheet_and_aggregate` | The sheet has 5 shuffled items (raw plus 4 variants) with a key, 5 listeners times 5 items = 25 rows, a README; aggregation averages clarity and naturalness per system, skips rows with a missing score, never reports the unscored system, and the scores appear in the next `ablation.md`. | The blinded listening test pipeline. |
 
-### 2.6 tests/test_app.py (Gradio app helpers) - 14 tests
+### 2.6 tests/test_app.py (Gradio app helpers) - 22 tests
 
 These test the pure helper functions on the fixture. The browser layer is covered by the manual checklist in section 4.
 
@@ -181,10 +181,18 @@ These test the pure helper functions on the fixture. The browser layer is covere
 | `test_results_discovery_empty` | Empty or missing results folder gives no folders and no figures; the empty message mentions `run_eval.py`. | Results tab with nothing to show. |
 | `test_results_discovery_populated` | A folder with `ablation.md`, a figure and variant wavs is discovered; clip stems and variant paths are read from file names. | Results tab with results. |
 | `test_build_app_constructs` | `build_app()` builds without error. | Catches Gradio wiring errors early. |
+| `test_output_players_are_not_inputs_for_the_user` | The "Input (A)" and "Voiced output (B)" players are built with `interactive=False`. | The output player also feeds Transcribe; without the pin Gradio would turn it into an upload/record box, and a user's own recording would be transcribed as "voiced output". |
 | `test_too_short_clip_raises_friendly` | An 80-sample clip makes `convert_clip`, `compare_variants` and `analyse` raise `ValueError` mentioning "shorter than one" frame. | Friendly error instead of a crash. |
 | `test_f0_params_follow_variant` | The label/f0 plot uses the variant's own settings (`v1_robot` is flat, `v3_aspiration` default) and the sliders only for "custom". | The plot must match the audio. |
+| `test_transcribe_both_signals` | With a fake ASR model, `transcribe_clip` returns the transcript of the input and of the output; no reference gives `wer` None and no WER row in the table. | Transcribe button, without loading Whisper. |
+| `test_transcribe_wer_against_reference` | Reference "The cat sat down." against "the cat sat" gives 1 error in 4 words for both; an exact reference gives 0 of 3; the table shows "1/4 = 25.0%". | WER uses `evaluate.wer_counts` (case and punctuation normalised). |
+| `test_transcribe_uses_output_player_value` | When the output player value belongs to the loaded clip, that exact signal (int16 scaled) is transcribed; for a stale clip the output is re-rendered. | The output transcript must match what the user hears. |
+| `test_transcribe_requires_clip` | No clip raises `ValueError` "Upload or record a clip first". | Friendly error. |
+| `test_transcribe_whisper_missing` | An `ImportError` from the loader becomes a `ValueError` containing "pip install openai-whisper". | The app and other tabs must work without whisper. |
+| `test_asr_model_cache_reuses_object` | `get_asr` loads each model name once and returns the same object; an unknown name raises `ValueError`. | Repeat clicks must not reload the model. |
+| `test_transcribe_real_base_does_not_crash` | Real Whisper `base` on the fixture returns strings and a WER denominator of 2. Skipped unless `openai-whisper` is importable and `~/.cache/whisper/base.pt` exists. | End to end check; the fixture is noise so the text itself is not asserted. |
 
-Totals: 21 + 16 + 29 + 15 + 9 + 14 = 104, which equals the collected count.
+Totals: 21 + 16 + 29 + 15 + 9 + 22 = 112, which equals the collected count.
 
 ## 3. Validation notebooks
 
@@ -220,12 +228,13 @@ and open the printed local address (normally http://127.0.0.1:7860). Allow micro
 **Convert tab**
 
 1. Press "Load demo clip". The input player is filled (the shared recording if present, otherwise a generated pseudo-whisper).
-2. Press "Convert". Expected: the "Input (A)" and "Voiced output (B)" players, a download file, a spectrogram figure (input noise, output with horizontal harmonic lines) and a labels and f0 figure (f0 only on vowel frames, falling over a phrase). Compare A and B by ear.
+2. Press "Convert". (Loading a different clip clears the output players, so an old output is never shown or transcribed next to a new input.) Expected: the "Input (A)" and "Voiced output (B)" players, a download file, a spectrogram figure (input noise, output with horizontal harmonic lines) and a labels and f0 figure (f0 only on vowel frames, falling over a phrase). Compare A and B by ear.
 3. Sliders: base pitch 70 to 250 Hz, intonation (declination) 0 to 0.3, stress 0 to 0.5, aspiration 0 to 0.3, pole warp 0.85 to 1.0, volume 0.2 to 2.0. Move base pitch and convert again: the pitch of B and the f0 plot change. Move the volume slider: B gets louder or quieter.
 4. Warp 1.0 means "off" and must give the same audio as no warp; 0.85 gives a visibly lower formant position and a darker voice.
 5. Variant dropdown: choose `v1_robot` and convert. The f0 plot is flat and the voice monotone. The named variants ignore the intonation, stress, aspiration and warp sliders (they still use base pitch and volume); only "custom" uses all the sliders.
 6. "Compare all variants": five players appear (custom plus the four variants). Listen to the order robot, contour, aspiration, warp.
 7. Download: the wav downloaded plays and has the same length as the output.
+8. Transcribe: with a clip converted, choose a model (base is the default) and press "Transcribe". Expected: a table with the transcript of the input (whisper) and of the voiced output, after a few seconds (the first use of a model downloads it). Type the sentence in "Reference sentence" and press again: a WER row (errors/reference words) appears for both. Change a slider without pressing Convert and transcribe: the output transcript still matches the audio in the output player. Press Transcribe with no clip: error "Upload or record a clip first". On the synthetic dev set Whisper recognises the raw whisper better than the voiced output, so the input column may be the more accurate one. The "Whisper" in the note is the ASR model, not whispered speech.
 
 **Edge cases on the Convert tab**
 
@@ -348,7 +357,7 @@ When no recordings exist, check the whole chain on synthetic data. This needs Wi
 Before the day:
 
 - [ ] `git status` clean on `main`; everyone has pulled.
-- [ ] `python -m pytest tests -q` shows 104 passed.
+- [ ] `python -m pytest tests -q` shows 112 passed (111 passed, 1 skipped without the cached Whisper base model).
 - [ ] The four notebooks run without errors (section 3).
 - [ ] `python run_offline.py data/raw/shared_test.wav results/out.wav --variants` produces `out.wav` and four variant wavs; listen to all.
 - [ ] Real recordings exist: `data/raw/shared_test.wav` and at least a few `spkXX_sNN_whisper.wav` with transcripts. The repository currently has none, so the notebooks show the synthetic clip.
