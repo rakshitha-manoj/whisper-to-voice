@@ -10,6 +10,8 @@ streaming logic.
 
 import os
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")  # web app: render to files only, never open a desktop (Tk) window
 import matplotlib.pyplot as plt
 import uuid
 import gradio as gr
