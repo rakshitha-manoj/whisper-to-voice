@@ -178,7 +178,7 @@ Mean of `log_spectral_distortion` over the selected frames. `mask` may be boolea
 A different quantity: how well one frame's LPC envelope fits the **actual FFT** of that frame. It computes LPC, then the 512-point FFT magnitude (dB) of the pre-emphasised, windowed frame, shifts the envelope so the **mean dB values are equal**, and takes the RMS of the difference. Silent frame returns 0.0. The order sweep (B9) uses this. Gain is deliberately not used: it measures shape only.
 
 ### `warp_poles(a, factor)`
-Section 5.
+Section 5. In the app (Analysis tab) you can see it: a unit circle plot shows the 12 poles of a frame (angle = frequency, radius near 1 = narrow formant) and the warped poles at the same radius with rotated angles, and a formant track plot draws F1 to F3 (lowest three pole frequencies above 90 Hz with bandwidth `-fs/pi * ln r` below 400 Hz) over the spectrogram, original against warped.
 
 ---
 

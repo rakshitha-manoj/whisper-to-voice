@@ -39,7 +39,7 @@ Live demo (A7, A8). List devices, then pick input and output; on Windows add --w
     python run_live.py --passthrough                             # mic check only
     python run_live.py --file data/raw/shared_test.wav results/live.wav --play   # no mic: file through the live code path
 
-Gradio app (A10, and the demo fallback). Tabs: Convert (sliders, A/B players, download, compare all variants, Transcribe input and output with Whisper ASR and optional WER against a reference sentence), Analysis (Module A features and labels, Module B LPC envelope per frame), Results (ablation table, figures, variant players from run_eval.py):
+Gradio app (A10, and the demo fallback). Tabs: Convert (sliders, A/B players, download, compare all variants, Transcribe input and output with Whisper ASR and optional WER against a reference sentence), Analysis (Module A features and labels, Module B LPC envelope, unit circle poles and formant tracks per frame), Live (clip through the live path: per-hop timing and live vs offline loudness), with extra Convert graphs (excitation, f0 breakdown, loudness, variant spectrogram grid, LSD and long term spectrum), Results (ablation table, figures, variant players from run_eval.py):
 
     python app.py
 

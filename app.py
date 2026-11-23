@@ -217,6 +217,417 @@ def compare_variants(audio_path, base_f0, decl, stress, aspiration, warp, volume
     return results
 
 
+def render_settings(variant, base_f0, decl, stress, aspiration, warp):
+    """Every parameter render() ends up using for this variant and sliders, as one dict (warp None = off)."""
+    from src.synth import VARIANTS
+    if variant in VARIANTS:
+        v = VARIANTS[variant]
+        return dict(base_f0=base_f0, decl=v.get("decl", 0.12), stress=v.get("stress", 0.25),
+                    jitter=v.get("jitter", 0.005), aspiration=v.get("aspiration", 0.15), warp=v.get("warp"))
+    w = None if warp is None or warp >= 1.0 else float(warp)
+    return dict(base_f0=base_f0, decl=decl, stress=stress, jitter=0.005, aspiration=aspiration, warp=w)
+
+
+def pole_frequencies(a, fs=FS, max_bw=400.0, min_freq=90.0, n_max=3):
+    """Formant candidates from LPC coefficients: lowest n_max pole frequencies (Hz) that pass the filters.
+
+    Frequency is the pole angle (angle * fs / 2 pi), bandwidth is -fs / pi * ln(radius). Only poles in the upper
+    half plane (positive frequency) with bandwidth below max_bw and frequency above min_freq are kept.
+    """
+    a = np.asarray(a, dtype=np.float64)
+    if len(a) < 2 or not np.any(a[1:]):
+        return np.zeros(0)
+    z = np.roots(a)
+    z = z[(z.imag > 1e-9) & (np.abs(z) > 0)]
+    freq = np.angle(z) * fs / (2 * np.pi)
+    bw = -fs / np.pi * np.log(np.abs(z))
+    keep = (bw >= 0) & (bw < max_bw) & (freq > min_freq)
+    return np.sort(freq[keep])[:n_max]
+
+
+def formant_tracks(A, labels, warp=None, fs=FS):
+    """Per frame formant list for non-silent frames (empty array for silence). warp None or 1.0 uses A as is."""
+    from src.lpc import warp_poles
+    out = []
+    for a, lab in zip(A, labels):
+        if lab == 0:
+            out.append(np.zeros(0))
+            continue
+        if warp is not None and warp < 1.0:
+            a = warp_poles(a, float(warp))
+        out.append(pole_frequencies(a, fs))
+    return out
+
+
+def pole_figure(af, idx, warp=1.0, order=12, fs=FS):
+    """Poles of the LPC filter of one frame on the z plane, with the unit circle and 1, 2, 4 kHz angle ticks."""
+    from matplotlib.figure import Figure
+    from src.lpc import lpc_frame, warp_poles
+    frames = af["frames"]
+    if len(frames) == 0:
+        raise ValueError(TOO_SHORT)
+    idx = int(min(max(idx, 0), len(frames) - 1))
+    a, _ = lpc_frame(frames[idx], order)
+    fig = Figure(figsize=(4.6, 4.6))
+    ax = fig.subplots()
+    th = np.linspace(0, 2 * np.pi, 400)
+    ax.plot(np.cos(th), np.sin(th), color="0.5", lw=1)
+    for f in (1000, 2000, 4000):
+        ang = 2 * np.pi * f / fs
+        ax.plot([0, np.cos(ang)], [0, np.sin(ang)], color="0.8", lw=0.8, ls=":")
+        ax.annotate(f"{f // 1000} kHz", (1.09 * np.cos(ang), 1.09 * np.sin(ang)), fontsize=7, ha="center", va="center")
+    ax.annotate("0 Hz", (1.12, 0), fontsize=7, ha="center", va="center")
+    ax.annotate("8 kHz", (-1.14, 0), fontsize=7, ha="center", va="center")
+    z = np.roots(a) if np.any(a[1:]) else np.zeros(0)
+    ax.plot(z.real, z.imag, "o", color="C0", label="LPC poles")
+    if warp < 1.0:
+        # a silent frame (a = [1, 0, ...]) has no poles; np.roots would otherwise report 12 at the origin
+        zw = np.roots(warp_poles(a, float(warp))) if len(z) else np.zeros(0)
+        ax.plot(zw.real, zw.imag, "x", color="C1", ms=7, label=f"warped poles ({warp:.2f})")
+    ax.axhline(0, color="0.85", lw=0.6)
+    ax.set_aspect("equal")
+    ax.set_xlim(-1.3, 1.3)
+    ax.set_ylim(-1.3, 1.3)
+    ax.set_xlabel("Real part")
+    ax.set_ylabel("Imaginary part")
+    ax.set_title(f"Module B: poles of frame {idx} (pole angle = frequency)", fontsize=9)
+    ax.legend(fontsize=7, loc="lower left")
+    fig.tight_layout()
+    return fig
+
+
+def formant_figure(x, A, labels, warp=1.0, idx=None, fs=FS, hop=HOP):
+    """F1 to F3 candidates (lowest three narrow-band LPC poles) over the input spectrogram, original and warped, for non-silent frames."""
+    from matplotlib.figure import Figure
+    fig = Figure(figsize=(7, 3.6))
+    ax = fig.subplots()
+    sig = np.asarray(x, dtype=np.float64) + 1e-7 * np.random.default_rng(0).standard_normal(len(x))
+    ax.specgram(sig, NFFT=512, Fs=fs, noverlap=384, cmap="magma")
+    t = (np.arange(len(labels)) * hop + 160) / fs
+    series = [(formant_tracks(A, labels), "o", "white", "original poles")]
+    if warp < 1.0:
+        series.append((formant_tracks(A, labels, warp), "^", "cyan", f"warped ({warp:.2f})"))
+    for tracks, marker, color, name in series:
+        tt = np.concatenate([np.full(len(f), t[i]) for i, f in enumerate(tracks)] + [np.zeros(0)])
+        ff = np.concatenate(list(tracks) + [np.zeros(0)])
+        ax.plot(tt, ff, marker, color=color, ms=2.5, ls="none", label=name)
+    if idx is not None and len(t):
+        ax.axvline(t[int(min(max(idx, 0), len(t) - 1))], color="yellow", lw=0.8, ls="--")
+    ax.set_ylim(0, 6000)
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Frequency (Hz)")
+    ax.set_title("Module B: F1-F3 candidates (lowest 3 narrow-band LPC poles) over input spectrogram", fontsize=9)
+    ax.legend(fontsize=7, loc="upper right")
+    fig.tight_layout()
+    return fig
+
+
+def module_b_pole_figures(path, idx, warp):
+    """(pole figure, formant figure) for the clip, from the cached analysis and conversion features."""
+    af = analysis_features(path)
+    feats = get_features(path)
+    if len(af["frames"]) == 0:
+        raise ValueError(TOO_SHORT)
+    return pole_figure(af, idx, warp), formant_figure(af["x"], feats["A"], feats["labels"], warp, idx)
+
+
+def voiced_window(labels, hop=HOP, dur_s=0.07, fs=FS):
+    """(start_frame, n_frames) of a window of about dur_s centred in the longest voiced run, or None."""
+    lab = np.asarray(labels) == 2
+    if not lab.any():
+        return None
+    d = np.diff(np.concatenate(([0], lab.astype(int), [0])))
+    starts, ends = np.flatnonzero(d == 1), np.flatnonzero(d == -1)
+    k = int(np.argmax(ends - starts))
+    s, e = int(starts[k]), int(ends[k])
+    n = max(1, int(round(dur_s * fs / hop)))
+    n = min(n, e - s)
+    return s + (e - s - n) // 2, n
+
+
+def _message_figure(text, figsize=(7, 2.5)):
+    from matplotlib.figure import Figure
+    fig = Figure(figsize=figsize)
+    ax = fig.subplots()
+    ax.axis("off")
+    ax.text(0.5, 0.5, text, ha="center", va="center", wrap=True, fontsize=10)
+    return fig
+
+
+def excitation_figure(feats, settings):
+    """About 70 ms of voiced excitation, pulses only against pulses plus aspiration, from the same f0 as the render."""
+    from matplotlib.figure import Figure
+    from src.pitch import build_f0, make_excitation
+    labels, energy = feats["labels"], feats["energy"]
+    win = voiced_window(labels)
+    if win is None:
+        return _message_figure("No voiced frames in this clip, so there is no voiced excitation to show.")
+    s = settings
+    f0 = build_f0(labels, energy, base_f0=s["base_f0"], decl=s["decl"], stress=s["stress"], jitter=s["jitter"])
+    e_plain = make_excitation(labels, f0, aspiration=0.0)
+    e_asp = make_excitation(labels, f0, aspiration=s["aspiration"])
+    a, n = win
+    lo, hi = a * HOP, min((a + n) * HOP, len(e_plain))
+    t = np.arange(lo, hi) / FS * 1000.0
+    fig = Figure(figsize=(7, 3.6))
+    ax1, ax2 = fig.subplots(2, 1, sharex=True, sharey=True)
+    ax1.plot(t, e_plain[lo:hi], lw=0.8)
+    ax1.set_title("Rosenberg pulses only (aspiration = 0)", fontsize=9)
+    ax2.plot(t, e_asp[lo:hi], lw=0.8, color="C1")
+    ax2.set_title(f"Pulses plus aspiration noise (aspiration = {s['aspiration']:.2f})", fontsize=9)
+    for ax in (ax1, ax2):
+        ax.set_ylabel("Amplitude")
+    ax2.set_xlabel("Time (ms)")
+    fig.suptitle("Module C: excitation in a voiced region", fontsize=10)
+    fig.tight_layout()
+    return fig
+
+
+def f0_components(feats, base_f0, decl, stress):
+    """Three f0 contours (jitter 0): base only, base + declination, base + declination + stress (the full contour)."""
+    from src.pitch import build_f0
+    labels, energy = feats["labels"], feats["energy"]
+    return dict(base=build_f0(labels, energy, base_f0=base_f0, decl=0.0, stress=0.0, jitter=0.0),
+                declination=build_f0(labels, energy, base_f0=base_f0, decl=decl, stress=0.0, jitter=0.0),
+                full=build_f0(labels, energy, base_f0=base_f0, decl=decl, stress=stress, jitter=0.0))
+
+
+def f0_breakdown_figure(feats, settings):
+    from matplotlib.figure import Figure
+    s = settings
+    c = f0_components(feats, s["base_f0"], s["decl"], s["stress"])
+    t = np.arange(len(feats["labels"])) * HOP / FS
+    fig = Figure(figsize=(7, 3.2))
+    ax = fig.subplots()
+    for key, label in (("base", "base only"), ("declination", "+ declination"), ("full", "+ declination + stress (full)")):
+        ax.plot(t, np.where(c[key] > 0, c[key], np.nan), label=label, lw=1.6 if key == "full" else 1.0)
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("f0 (Hz)")
+    ax.set_title("Module C: what builds the f0 contour (voiced frames, jitter off)", fontsize=9)
+    ax.legend(fontsize=7)
+    fig.tight_layout()
+    return fig
+
+
+def rms_db(sig):
+    """Per frame RMS of a signal in dB (framing.frame_signal and frame_energy)."""
+    from src.framing import frame_signal, frame_energy
+    return 20 * np.log10(frame_energy(frame_signal(np.asarray(sig, dtype=np.float32))) + 1e-6)
+
+
+def _limit_db_axis(ax, span=70.0):
+    """Show the top span dB of the data; digital silence (-120 dB) would otherwise squash the speech."""
+    top = max(float(np.max(line.get_ydata())) for line in ax.get_lines())
+    ax.set_ylim(top - span, top + 3)
+
+
+def loudness_figure(x, y, fs=FS, hop=HOP):
+    """Waveform overlay (input vs output) and per frame RMS in dB."""
+    from matplotlib.figure import Figure
+    n = min(len(x), len(y))
+    fig = Figure(figsize=(7, 4.8))
+    ax1, ax2 = fig.subplots(2, 1, sharex=True)
+    t = np.arange(n) / fs
+    ax1.plot(t, x[:n], lw=0.5, color="0.5", label="input (whisper)")
+    ax1.plot(t, y[:n], lw=0.5, color="C1", alpha=0.7, label="output (voiced)")
+    ax1.set_ylabel("Amplitude")
+    for line in ax1.legend(fontsize=7, loc="upper right").get_lines():
+        line.set_linewidth(2)
+    ax1.set_title("Module C: loudness, input vs output", fontsize=9)
+    for sig, name, color in ((x, "input RMS", "0.4"), (y, "output RMS", "C1")):
+        e = rms_db(sig[:n])
+        ax2.plot(np.arange(len(e)) * hop / fs, e, color=color, label=name)
+    ax2.set_ylabel("Frame RMS (dB)")
+    ax2.set_xlabel("Time (s)")
+    _limit_db_axis(ax2)
+    ax2.legend(fontsize=7, loc="upper right")
+    fig.tight_layout()
+    return fig
+
+
+def source_loudness_figures(path, y, variant, base_f0, decl, stress, aspiration, warp):
+    """(excitation zoom, f0 breakdown, loudness) for the clip and the rendered output y."""
+    from src.framing import load_audio
+    if not path:
+        raise ValueError("Upload or record a clip first, or press Load demo clip.")
+    feats = get_features(path)
+    if len(feats["labels"]) == 0:
+        raise ValueError(TOO_SHORT)
+    s = render_settings(variant, base_f0, decl, stress, aspiration, warp)
+    x, _ = load_audio(path)
+    return excitation_figure(feats, s), f0_breakdown_figure(feats, s), loudness_figure(x, y)
+
+
+def source_loudness_ui(path, variant, base_f0, decl, stress, aspiration, warp, volume, out_audio):
+    """Gradio wrapper, run after Convert. The output player value only gates it: Gradio peak normalises a numpy
+    player to int16, which would shift the output level in the loudness plot. The output is rendered again instead
+    (cached features, deterministic seeds), so it is the same signal as the player before that normalisation.
+    """
+    if not path:
+        raise ValueError("Upload or record a clip first, or press Load demo clip.")
+    if out_audio is None:
+        raise ValueError("Press Convert first.")
+    y, _ = render(path, variant, base_f0, decl, stress, aspiration, warp, volume)
+    return source_loudness_figures(path, y, variant, base_f0, decl, stress, aspiration, warp)
+
+
+def comparison_signals(x, results):
+    """[(label, signal)] for the input then each compare_variants result, trimmed to a common length."""
+    n = min([len(x)] + [len(r[1][1]) for r in results])
+    return [("input", np.asarray(x[:n]))] + [(r[0], np.asarray(r[1][1][:n])) for r in results]
+
+
+def spectrogram_grid_figure(signals, fs=FS):
+    """Spectrograms of every signal on one shared dB colour scale."""
+    from matplotlib import mlab
+    from matplotlib.figure import Figure
+    rng = np.random.default_rng(0)
+    sigs = [(name, np.asarray(s, dtype=np.float64) + 1e-7 * rng.standard_normal(len(s))) for name, s in signals]
+    vmax = max(float(np.max(10 * np.log10(mlab.specgram(s, NFFT=512, Fs=fs, noverlap=384)[0] + 1e-20)))
+               for _, s in sigs)
+    vmin = vmax - 80.0
+    rows = (len(sigs) + 1) // 2
+    fig = Figure(figsize=(8, 2.1 * rows + 0.4))
+    axes = np.atleast_1d(fig.subplots(rows, 2, sharex=True, sharey=True)).ravel()
+    im = None
+    for ax, (name, s) in zip(axes, sigs):
+        im = ax.specgram(s, NFFT=512, Fs=fs, noverlap=384, cmap="magma", vmin=vmin, vmax=vmax)[3]
+        ax.set_title(name, fontsize=8)
+    for ax in axes[len(sigs):]:
+        ax.axis("off")
+    for ax in axes[::2]:
+        ax.set_ylabel("Frequency (Hz)")
+    for ax in axes[-2:]:
+        ax.set_xlabel("Time (s)")
+    fig.tight_layout()
+    fig.colorbar(im, ax=list(axes[:len(sigs)]), label="dB (shared scale)", shrink=0.8)
+    return fig
+
+
+def lsd_values(x, signals):
+    """{label: mean log spectral distortion (dB) of that signal against x over non-silent frames} via evaluate.lsd_variant."""
+    from src import evaluate
+    return {name: evaluate.lsd_variant(x[:len(s)], s) for name, s in signals}
+
+
+def lsd_figure(values):
+    from matplotlib.figure import Figure
+    fig = Figure(figsize=(7, 3))
+    ax = fig.subplots()
+    names = list(values)
+    bars = ax.bar(range(len(names)), [values[k] for k in names], color="C0")
+    ax.bar_label(bars, fmt="%.2f", fontsize=7)
+    ax.set_xticks(range(len(names)), names, fontsize=7, rotation=15)
+    ax.set_ylabel("LSD (dB), lower is closer")
+    ax.set_title("Log spectral distortion against the whisper input (non-silent frames)", fontsize=9)
+    fig.tight_layout()
+    return fig
+
+
+def ltas_figure(signals, fs=FS):
+    """Long term average spectrum (Welch, dB) of every signal on one axis."""
+    import scipy.signal
+    from matplotlib.figure import Figure
+    fig = Figure(figsize=(7, 3.4))
+    ax = fig.subplots()
+    for name, s in signals:
+        f, p = scipy.signal.welch(np.asarray(s, dtype=np.float64), fs=fs, nperseg=512)
+        # custom is dashed and on top: at default sliders it equals v3_aspiration and would otherwise be hidden
+        custom = name.startswith("custom")
+        ax.plot(f, 10 * np.log10(p + 1e-14), label=name, color="0.2" if name == "input" else None,
+                lw=1.8 if name == "input" else 1.0, ls="--" if custom else "-", zorder=3 if custom else 2)
+    ax.set_xlabel("Frequency (Hz)")
+    ax.set_ylabel("Power spectral density (dB/Hz)")
+    ax.set_title("Long term average spectrum (Welch): spectral tilt, input vs variants", fontsize=9)
+    ax.legend(fontsize=7)
+    fig.tight_layout()
+    return fig
+
+
+def comparison_figures(path, results):
+    """(spectrogram grid, LSD bars, LTAS) from the compare_variants results; nothing is rendered again."""
+    from src.framing import load_audio
+    x, _ = load_audio(path)
+    sigs = comparison_signals(x, results)
+    if np.any(get_features(path)["labels"] != 0):
+        lsd_fig = lsd_figure(lsd_values(sigs[0][1], sigs[1:]))
+    else:  # lsd_frames returns 0.0 for an empty selection, which would read as a perfect match
+        lsd_fig = _message_figure("No non-silent frames in this clip, so LSD is not defined.", figsize=(7, 3))
+    return spectrogram_grid_figure(sigs), lsd_fig, ltas_figure(sigs)
+
+
+def live_run(path, variant, base_f0, decl, stress, aspiration, warp, volume):
+    """Run the clip through the live (causal, hop by hop) path with the current settings, plus the offline render.
+
+    Returns dict(x, y_live, y_off, timings (ms per hop), report (live.latency_report)).
+    """
+    from src import live
+    from src.framing import load_audio
+    if not path:
+        raise ValueError("Upload or record a clip first, or press Load demo clip.")
+    y_off, _ = render(path, variant, base_f0, decl, stress, aspiration, warp, volume)
+    s = render_settings(variant, base_f0, decl, stress, aspiration, warp)
+    x, _ = load_audio(path)
+    params = dict(base_f0=s["base_f0"], decl=s["decl"], stress=s["stress"], jitter=s["jitter"],
+                  aspiration=s["aspiration"], warp=s["warp"], volume=volume)
+    state = live.init_live_state(params)
+    y_live = live.process_file_live(x, state=state)
+    timings = np.asarray(state["timings"], dtype=np.float64)
+    return dict(x=x, y_live=y_live, y_off=y_off, timings=timings, report=live.latency_report(state))
+
+
+def latency_figure(timings):
+    from matplotlib.figure import Figure
+    from src.live import BUDGET_MS
+    fig = Figure(figsize=(7, 3))
+    ax = fig.subplots()
+    ax.plot(np.arange(len(timings)), timings, lw=0.8, label="processing time per hop")
+    ax.axhline(BUDGET_MS, color="r", ls="--", label=f"{BUDGET_MS:.0f} ms budget (one hop)")
+    ax.set_xlabel("Hop index (one hop = 10 ms of audio)")
+    ax.set_ylabel("Processing time (ms)")
+    ax.set_title("Live path: time to process each hop", fontsize=9)
+    ax.set_ylim(0, max(BUDGET_MS * 1.4, float(np.max(timings)) * 1.1 if len(timings) else 0.0))
+    ax.legend(fontsize=7, loc="upper left", bbox_to_anchor=(0.0, 0.8))
+    fig.tight_layout()
+    return fig
+
+
+def live_envelope_figure(y_live, y_off, fs=FS, hop=HOP):
+    from matplotlib.figure import Figure
+    n = min(len(y_live), len(y_off))
+    fig = Figure(figsize=(7, 3))
+    ax = fig.subplots()
+    for sig, name, style in ((y_off, "offline render (same settings)", "-"), (y_live, "live path", "--")):
+        e = rms_db(sig[:n])
+        ax.plot(np.arange(len(e)) * hop / fs, e, ls=style, label=name)
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Frame RMS (dB)")
+    _limit_db_axis(ax)
+    ax.set_title("Live vs offline loudness envelope", fontsize=9)
+    ax.legend(fontsize=7, loc="upper right")
+    fig.tight_layout()
+    return fig
+
+
+def live_summary(report):
+    from src.live import BUDGET_MS
+    r = report
+    return (f"**Hops:** {r['hops']}  \n"
+            f"**Processing time per hop:** mean {r['mean_ms']:.2f} ms, 95th percentile {r['p95_ms']:.2f} ms, "
+            f"max {r['max_ms']:.2f} ms (budget {BUDGET_MS:.0f} ms)  \n"
+            f"**Hops over budget:** {100 * r['frac_over_budget']:.1f}%  \n"
+            f"**Algorithmic delay:** {r['algorithmic_ms']:.0f} ms. This is a model (two hops from the frame "
+            f"overlap and buffering), not a measurement. Sound device latency is not measured here; "
+            f"run `python run_live.py` with real devices for that.")
+
+
+def live_ui(path, variant, base_f0, decl, stress, aspiration, warp, volume):
+    """Gradio wrapper for the Live tab. Returns (player value, latency figure, envelope figure, summary markdown)."""
+    r = live_run(path, variant, base_f0, decl, stress, aspiration, warp, volume)
+    return ((FS, r["y_live"]), latency_figure(r["timings"]), live_envelope_figure(r["y_live"], r["y_off"]),
+            live_summary(r["report"]))
+
+
 def analysis_features(path):
     """Frames, RMS, ZCR and voicing strength of a clip, cached per file."""
     from src.framing import load_audio, frame_signal, frame_energy, frame_zcr
@@ -404,6 +815,16 @@ def build_app():
                         download = gr.File(label="Download output wav")
                         spec = gr.Plot(label="Spectrograms")
                         lab = gr.Plot(label="Labels and f0")
+                        with gr.Accordion("Source and loudness", open=False):
+                            gr.Markdown("Filled when Convert runs: excitation zoom, f0 contour breakdown, input vs output loudness.")
+                            exc_plot = gr.Plot(label="Excitation (about 70 ms, voiced)")
+                            f0_plot = gr.Plot(label="f0 contour breakdown")
+                            loud_plot = gr.Plot(label="Loudness")
+                        with gr.Accordion("Variant comparison", open=False):
+                            gr.Markdown("Filled by Compare all variants (the same renders as the players).")
+                            grid_plot = gr.Plot(label="Spectrograms (shared colour scale)")
+                            lsd_plot = gr.Plot(label="LSD per variant")
+                            ltas_plot = gr.Plot(label="Long term average spectrum")
                         transcripts = gr.Markdown(label="Transcripts")
                         cmp_players = [gr.Audio(label="custom (sliders)" if name == "custom" else name, type="numpy")
                                        for name in VARIANT_CHOICES]
@@ -414,14 +835,21 @@ def build_app():
                 def convert_tracked(*args):
                     return (*convert_full(*args), args[0])
 
-                go.click(friendly(convert_tracked), params, [out_audio, spec, lab, in_audio, download, converted_from])
+                source_plots = [exc_plot, f0_plot, loud_plot]
+                compare_plots = [grid_plot, lsd_plot, ltas_plot]
+                go.click(friendly(convert_tracked), params,
+                         [out_audio, spec, lab, in_audio, download, converted_from]).success(
+                    friendly(source_loudness_ui), [*params, out_audio], source_plots)
                 # A new input clip makes the previous output stale: clear it so player and transcript never disagree
-                audio.change(lambda: (None, None, None, None), outputs=[out_audio, in_audio, download, converted_from])
+                # (the compare players and the transcript table belong to the old clip too)
+                stale = [out_audio, in_audio, download, converted_from, *source_plots, *compare_plots, *cmp_players]
+                audio.change(lambda: (None,) * len(stale) + ("",), outputs=[*stale, transcripts])
 
                 def compare(path, _variant, *sliders):
-                    return [r[1] for r in compare_variants(path, *sliders)]
+                    results = compare_variants(path, *sliders)
+                    return [r[1] for r in results] + list(comparison_figures(path, results))
 
-                cmp_btn.click(friendly(compare), params, cmp_players)
+                cmp_btn.click(friendly(compare), params, cmp_players + compare_plots)
                 tr_btn.click(friendly(transcribe_ui), [audio, asr_model, reference, out_audio, converted_from, *params[1:]],
                              transcripts)
 
@@ -437,25 +865,39 @@ def build_app():
                 warp_b = gr.Slider(0.85, 1.0, value=0.92, step=0.01, label="Warp factor (1.0 = off)")
                 plot_b = gr.Plot(label="Module B")
                 gain_txt = gr.Markdown()
+                plot_poles = gr.Plot(label="Poles on the unit circle (selected frame)")
+                plot_formants = gr.Plot(label="Formant tracks")
 
                 def run_analysis(path, sm, zt, idx, w):
                     fa, fb, text, n = analyse(path, sm, zt, idx, w)
-                    return fa, fb, text, gr.Slider(maximum=n - 1)
+                    return fa, fb, text, gr.Slider(maximum=n - 1), *module_b_pole_figures(path, idx, w)
 
                 def rerun_a(path, sm, zt):
                     return module_a_figure(analysis_features(path), sm, zt) if path else None
 
                 def rerun_b(path, idx, w):
                     if not path:
-                        return None, ""
-                    return lpc_frame_figure(analysis_features(path), idx, w)
+                        return None, "", None, None
+                    return (*lpc_frame_figure(analysis_features(path), idx, w), *module_b_pole_figures(path, idx, w))
 
                 an_btn.click(friendly(run_analysis), [audio, sil_mult, zcr_slider, frame_idx, warp_b],
-                             [plot_a, plot_b, gain_txt, frame_idx])
+                             [plot_a, plot_b, gain_txt, frame_idx, plot_poles, plot_formants])
                 for s in (sil_mult, zcr_slider):
                     s.release(rerun_a, [audio, sil_mult, zcr_slider], plot_a)
                 for s in (frame_idx, warp_b):
-                    s.release(friendly(rerun_b), [audio, frame_idx, warp_b], [plot_b, gain_txt])
+                    s.release(friendly(rerun_b), [audio, frame_idx, warp_b], [plot_b, gain_txt, plot_poles, plot_formants])
+
+            with gr.Tab("Live"):
+                gr.Markdown("Pushes the clip loaded on the Convert tab through the live (causal, hop by hop) path with the "
+                            "current Convert settings. No sound device is used. For real time use run "
+                            "`python run_live.py --list-devices`, then `python run_live.py --in N --out M`.")
+                live_btn = gr.Button("Run clip through the live path", variant="primary")
+                live_audio = gr.Audio(label="Live path output", type="numpy", interactive=False)
+                live_summary_md = gr.Markdown()
+                live_lat_plot = gr.Plot(label="Per hop processing time")
+                live_env_plot = gr.Plot(label="Live vs offline loudness")
+                live_btn.click(friendly(live_ui), params, [live_audio, live_lat_plot, live_env_plot, live_summary_md])
+                audio.change(lambda: (None,) * 4, outputs=[live_audio, live_lat_plot, live_env_plot, live_summary_md])
 
             with gr.Tab("Results"):
                 if not folders:

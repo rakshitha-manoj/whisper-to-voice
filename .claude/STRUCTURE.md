@@ -22,7 +22,7 @@ Offline loops the same per-hop step functions the live path calls (f0_step for l
 - run_offline.py: one wav in, one wav out (optional variants)
 - run_eval.py: ablation table over data/raw/spk*_s*_whisper.wav -> results/
 - run_live.py: real time demo
-- app.py: tabbed Gradio app (fallback for the live demo): Convert (sliders, A/B, download, compare variants, Transcribe input vs output with optional WER; get_asr caches Whisper models per name, whisper imported lazily), Analysis (Module A features/labels, Module B per-frame LPC envelope), Results (reads results/**/ablation.md, figures, variant wavs). Pure helpers, gradio imported in build_app only
+- app.py: tabbed Gradio app (fallback for the live demo): Convert (sliders, A/B, download, compare variants, Transcribe input vs output with optional WER; get_asr caches Whisper models per name, whisper imported lazily), Analysis (Module A features/labels, Module B per-frame LPC envelope, pole plot and F1-F3 formant tracks), Live (clip through process_file_live: per-hop timing, live vs offline envelope, latency summary), Convert accordions for Module C graphs (excitation zoom, f0 breakdown, loudness) and variant comparison (spectrogram grid, LSD bars, LTAS), Results (reads results/**/ablation.md, figures, variant wavs). Pure helpers, gradio imported in build_app only
 - record.py: record a clip
 - tools/make_dev_clip.py: SAPI TTS sentences whisperised by LPC + noise -> results/dev (synthetic, pipeline check only)
 - app_a.py: Module A diagnostic Gradio view (older, standalone; app.py Analysis tab covers it)

@@ -197,3 +197,175 @@ def test_transcribe_real_base_does_not_crash(clip):
     res = app.transcribe_clip(clip, "base", "hello world")
     assert isinstance(res["input"], str) and isinstance(res["output"], str)
     assert res["wer"]["input"][1] == 2
+
+
+# ---- graphs: Module B poles and formants, Module C source and loudness, variant comparison, live path ----
+
+def _texts(fig):
+    return [t.get_text() for ax in fig.axes for t in ax.texts]
+
+
+@pytest.mark.parametrize("warp", [1.0, 0.9])
+@pytest.mark.parametrize("which", ["first", "last"])
+def test_pole_figure(clip, which, warp):
+    af = app.analysis_features(clip)
+    idx = 0 if which == "first" else len(af["frames"]) - 1
+    fig = app.pole_figure(af, idx, warp)
+    ax = fig.axes[0]
+    assert "kHz" in " ".join(_texts(fig))
+    labels = [ln.get_label() for ln in ax.get_lines()]
+    assert ("warped poles (0.90)" in labels) == (warp < 1.0)
+    assert "LPC poles" in labels
+
+
+def test_pole_figure_rejects_empty_clip():
+    with pytest.raises(ValueError):
+        app.pole_figure(dict(frames=np.zeros((0, 320))), 0, 1.0)
+
+
+def test_pole_frequencies_are_plausible(clip):
+    feats = app.get_features(clip)
+    tracks = app.formant_tracks(feats["A"], feats["labels"])
+    assert len(tracks) == len(feats["labels"])
+    assert sum(len(t) > 0 for t in tracks) > 20
+    for t, lab in zip(tracks, feats["labels"]):
+        assert len(t) <= 3
+        assert np.all((t > 90) & (t < 8000))
+        assert np.all(np.diff(t) >= 0)
+        if lab == 0:
+            assert len(t) == 0
+    warped = app.formant_tracks(feats["A"], feats["labels"], 0.9)
+    assert all(len(t) <= 3 and np.all((t > 90) & (t < 8000)) for t in warped)
+
+
+def test_pole_frequencies_known_resonance():
+    from tests.fixtures import formant_filter
+    a = formant_filter([(700, 130), (1220, 70), (2600, 160)])
+    f = app.pole_frequencies(a)
+    assert np.allclose(f, [700, 1220, 2600], atol=5)
+    assert len(app.pole_frequencies(np.array([1.0, 0, 0, 0]))) == 0
+
+
+@pytest.mark.parametrize("warp", [1.0, 0.9])
+def test_formant_figure(clip, warp):
+    fig = app.module_b_pole_figures(clip, 30, warp)[1]
+    labels = [ln.get_label() for ln in fig.axes[0].get_lines()]
+    assert "original poles" in labels and (f"warped ({warp:.2f})" in labels) == (warp < 1.0)
+
+
+def test_excitation_figure_voiced(clip):
+    feats = app.get_features(clip)
+    s = app.render_settings("custom", 120, 0.12, 0.25, 0.15, 1.0)
+    fig = app.excitation_figure(feats, s)
+    assert len(fig.axes) == 2
+    for ax in fig.axes:
+        x = ax.get_lines()[0].get_xdata()
+        assert 60 <= x[-1] - x[0] + 0.0625 <= 85  # about 70 ms in ms
+
+
+def test_excitation_figure_without_voiced_frames():
+    feats = dict(labels=np.ones(50, dtype=int), energy=np.ones(50))
+    fig = app.excitation_figure(feats, app.render_settings("custom", 120, 0.12, 0.25, 0.15, 1.0))
+    assert any("No voiced" in t for t in _texts(fig))
+
+
+def test_source_loudness_on_clip_without_voiced_frames(tmp_path):
+    import soundfile
+    p = str(tmp_path / "quiet.wav")
+    soundfile.write(p, (0.001 * np.random.default_rng(1).standard_normal(8000)).astype(np.float32), 16000)
+    y, _ = app.render(p)
+    figs = app.source_loudness_figures(p, y, "custom", 120, 0.12, 0.25, 0.15, 1.0)
+    assert len(figs) == 3
+    # every frame is silent, so LSD has no frames: a message, not five 0.00 dB bars that read as a perfect match
+    lsd_fig = app.comparison_figures(p, app.compare_variants(p, 120, 0.12, 0.25, 0.15, 1.0, 1.0))[1]
+    assert any("not defined" in t for t in _texts(lsd_fig)) and not lsd_fig.axes[0].patches
+
+
+def test_f0_components_full_contour_matches_build_f0(clip):
+    from src.pitch import build_f0
+    feats = app.get_features(clip)
+    c = app.f0_components(feats, 130, 0.2, 0.3)
+    ref = build_f0(feats["labels"], feats["energy"], base_f0=130, decl=0.2, stress=0.3, jitter=0.0)
+    assert np.array_equal(c["full"], ref)
+    voiced = feats["labels"] == 2
+    assert np.all(c["base"][voiced] == 130) and np.all(c["base"][~voiced] == 0)
+    assert np.all(c["declination"][voiced] <= 130 + 1e-3)
+    fig = app.f0_breakdown_figure(feats, app.render_settings("custom", 130, 0.2, 0.3, 0.15, 1.0))
+    assert len(fig.axes[0].get_lines()) == 3
+
+
+def test_render_settings_follow_variant():
+    assert app.render_settings("custom", 100, 0.2, 0.4, 0.1, 0.9) == dict(
+        base_f0=100, decl=0.2, stress=0.4, jitter=0.005, aspiration=0.1, warp=0.9)
+    s = app.render_settings("v1_robot", 100, 0.2, 0.4, 0.1, 0.9)
+    assert (s["decl"], s["stress"], s["jitter"], s["aspiration"], s["warp"]) == (0.0, 0.0, 0.0, 0.0, None)
+    assert app.render_settings("v4_warp", 100, 0.2, 0.4, 0.1, 1.0)["warp"] == 0.92
+
+
+def test_loudness_figure_output_follows_input(clip):
+    from src.framing import load_audio
+    x, _ = load_audio(clip)
+    y, _ = app.render(clip)
+    fig = app.loudness_figure(x, y)
+    assert len(fig.axes) == 2
+    ex, ey = app.rms_db(x), app.rms_db(y)
+    loud = ex > ex.max() - 30
+    assert np.abs(ex[loud] - ey[:len(ex)][loud]).mean() < 3.0
+
+
+def test_source_loudness_ui_needs_convert(clip):
+    with pytest.raises(ValueError):
+        app.source_loudness_ui(clip, "custom", 120, 0.12, 0.25, 0.15, 1.0, 1.0, None)
+    out, *_ = app.convert_clip(clip, "custom", 120, 0.12, 0.25, 0.15, 1.0, 0.5)
+    # what Gradio hands back from a numpy output player: peak normalised int16
+    pcm = (out[1] / np.abs(out[1]).max() * 32767).astype(np.int16)
+    figs = app.source_loudness_ui(clip, "custom", 120, 0.12, 0.25, 0.15, 1.0, 0.5, (16000, pcm))
+    assert len(figs) == 3
+    # the loudness plot shows the rendered level (volume 0.5 included), not the normalised player level
+    out_rms = [ln for ln in figs[2].axes[1].get_lines() if ln.get_label() == "output RMS"][0].get_ydata()
+    assert np.allclose(out_rms, app.rms_db(out[1]), atol=1e-4)
+
+
+@pytest.fixture(scope="module")
+def cmp_results(clip):
+    return app.compare_variants(clip, 120, 0.12, 0.25, 0.15, 0.92, 1.0)
+
+
+def test_comparison_grid_lsd_ltas(clip, cmp_results):
+    from src.framing import load_audio
+    x, _ = load_audio(clip)
+    sigs = app.comparison_signals(x, cmp_results)
+    assert [n for n, _ in sigs] == ["input", "custom (sliders)", "v1_robot", "v2_contour", "v3_aspiration", "v4_warp"]
+    assert len({len(s) for _, s in sigs}) == 1
+    grid = app.spectrogram_grid_figure(sigs)
+    clims = {tuple(ax.images[0].get_clim()) for ax in grid.axes if ax.images}
+    assert len(clims) == 1 and sum(1 for ax in grid.axes if ax.images) == 6
+    lsd = app.lsd_values(sigs[0][1], sigs[1:])
+    assert list(lsd) == [n for n, _ in sigs[1:]] and all(np.isfinite(v) and v > 0 for v in lsd.values())
+    assert len(app.lsd_figure(lsd).axes[0].patches) == 5
+    assert len(app.ltas_figure(sigs).axes[0].get_lines()) == 6
+    assert len(app.comparison_figures(clip, cmp_results)) == 3
+
+
+def test_live_run_and_summary(clip):
+    r = app.live_run(clip, "custom", 120, 0.12, 0.25, 0.15, 0.92, 1.0)
+    n_hops = int(np.ceil(len(r["x"]) / 160))
+    assert len(r["timings"]) == n_hops == r["report"]["hops"]
+    assert len(r["y_live"]) == len(r["x"]) and np.all(np.isfinite(r["y_live"]))
+    for k in ("mean_ms", "p95_ms", "max_ms", "frac_over_budget", "algorithmic_ms"):
+        assert k in r["report"]
+    out, lat, env, md = app.live_ui(clip, "custom", 120, 0.12, 0.25, 0.15, 0.92, 1.0)
+    assert out[0] == 16000 and "Algorithmic delay" in md and "not measured" in md
+    assert lat.axes[0].lines[1].get_ydata()[0] == 10.0 and len(env.axes[0].get_lines()) == 2
+
+
+def test_live_run_requires_clip():
+    with pytest.raises(ValueError):
+        app.live_run(None, "custom", 120, 0.12, 0.25, 0.15, 1.0, 1.0)
+
+
+def test_live_tab_player_not_interactive():
+    import gradio as gr
+    demo = app.build_app()
+    players = {b.label: b for b in demo.blocks.values() if isinstance(b, gr.Audio)}
+    assert players["Live path output"].interactive is False

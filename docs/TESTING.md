@@ -33,9 +33,9 @@ The automated suite, the notebooks and the app need no recordings. `data/raw/sha
 
 Expected result, verified on 2026-11-22 (Windows, Python 3.12):
 
-    112 passed in about 35 to 65 s
+    132 passed in about 40 to 70 s
 
-Allow roughly 20 to 45 seconds depending on the machine. If the count is not 112 (111 passed and 1 skipped if openai-whisper or its cached `base` model is absent), either a test file changed or something failed to import.
+Allow roughly 20 to 45 seconds depending on the machine. If the count is not 132 (131 passed and 1 skipped if openai-whisper or its cached `base` model is absent), either a test file changed or something failed to import.
 
 Notes:
 
@@ -165,7 +165,7 @@ None of these needs Whisper; the ASR is replaced by a stub where needed.
 | `test_run_ablation_eval_monkeypatched_asr` | With a stub ASR that always returns "the birch canoe" for the reference "The birch canoe slid" (4 words): WER is 0.25, per clip and corpus. | Checks the WER bookkeeping. |
 | `test_listening_sheet_and_aggregate` | The sheet has 5 shuffled items (raw plus 4 variants) with a key, 5 listeners times 5 items = 25 rows, a README; aggregation averages clarity and naturalness per system, skips rows with a missing score, never reports the unscored system, and the scores appear in the next `ablation.md`. | The blinded listening test pipeline. |
 
-### 2.6 tests/test_app.py (Gradio app helpers) - 22 tests
+### 2.6 tests/test_app.py (Gradio app helpers) - 42 tests
 
 These test the pure helper functions on the fixture. The browser layer is covered by the manual checklist in section 4.
 
@@ -191,8 +191,24 @@ These test the pure helper functions on the fixture. The browser layer is covere
 | `test_transcribe_whisper_missing` | An `ImportError` from the loader becomes a `ValueError` containing "pip install openai-whisper". | The app and other tabs must work without whisper. |
 | `test_asr_model_cache_reuses_object` | `get_asr` loads each model name once and returns the same object; an unknown name raises `ValueError`. | Repeat clicks must not reload the model. |
 | `test_transcribe_real_base_does_not_crash` | Real Whisper `base` on the fixture returns strings and a WER denominator of 2. Skipped unless `openai-whisper` is importable and `~/.cache/whisper/base.pt` exists. | End to end check; the fixture is noise so the text itself is not asserted. |
+| `test_pole_figure[first\|last-1.0\|0.9]` (4) | The pole plot for the first and last frame at warp 1.0 and 0.9 has the "kHz" angle ticks and the LPC poles; the warped poles are drawn only when warp is below 1. | Analysis tab, unit circle plot. |
+| `test_pole_figure_rejects_empty_clip` | A clip with no frames raises `ValueError`. | Friendly error. |
+| `test_pole_frequencies_are_plausible` | Formants extracted per frame (`formant_tracks`, original and warped 0.9): at most 3 per frame, all between 90 and 8000 Hz, increasing, none for silent frames, found on more than 20 frames. | Formant extraction rule (positive frequency, bandwidth below 400 Hz, above 90 Hz). |
+| `test_pole_frequencies_known_resonance` | A filter built from 700, 1220 and 2600 Hz resonances gives those three frequencies within 5 Hz; a flat filter gives none. | The angle to Hz conversion is right. |
+| `test_formant_figure[1.0\|0.9]` (2) | The formant track figure has original points, and warped points only when warp is below 1. | Analysis tab, formant tracks over the spectrogram. |
+| `test_excitation_figure_voiced` | The excitation zoom has two panels, each about 70 ms long. | Convert tab, Source and loudness. |
+| `test_excitation_figure_without_voiced_frames` | With no voiced frames the figure shows "No voiced frames..." instead of crashing. | Whisper-only or silent clips. |
+| `test_source_loudness_on_clip_without_voiced_frames` | A very quiet noise clip (every frame silent) gives all three source and loudness figures without error, and the LSD panel of the variant comparison shows "LSD is not defined" instead of five 0.00 dB bars. | Same, through the full handler path. |
+| `test_f0_components_full_contour_matches_build_f0` | The "full" contour equals `pitch.build_f0` with jitter 0; the base line is flat at the base pitch on voiced frames and 0 elsewhere; the declination line never exceeds the base; the figure has three lines. | The breakdown must be the real contour, not a lookalike. |
+| `test_render_settings_follow_variant` | `render_settings` returns the sliders for custom and the variant's own decl, stress, jitter, aspiration and warp for named variants. | Source plots and the live run must match what was rendered. |
+| `test_loudness_figure_output_follows_input` | Two axes; on frames within 30 dB of the input peak the output RMS (dB) is within 3 dB of the input on average. | Output stage follows the input loudness. |
+| `test_source_loudness_ui_needs_convert` | No output player value raises `ValueError`; with a peak normalised int16 player value (what Gradio hands back) at volume 0.5 it gives three figures, and the plotted output RMS equals `rms_db` of the rendered output, not of the normalised player copy. | Wiring after Convert; the loudness plot shows the real output level. |
+| `test_comparison_grid_lsd_ltas` | Six signals (input, custom, four variants) of one length; all six spectrograms share one colour scale; LSD from `evaluate.lsd_variant` is finite and positive for five variants and drawn as five bars; the LTAS has six lines. | Variant comparison graphs, from the renders that Compare already made. |
+| `test_live_run_and_summary` | Per-hop timings: one per 160 sample hop and equal to the report's hop count; live output has the input length and is finite; the report has the mean, p95, max, fraction over budget and algorithmic delay; the summary text says the delay is a model and the device latency is not measured; the 10 ms budget line is drawn. | Live tab. |
+| `test_live_run_requires_clip` | No clip raises `ValueError`. | Friendly error. |
+| `test_live_tab_player_not_interactive` | The "Live path output" player is `interactive=False`. | It is an output only. |
 
-Totals: 21 + 16 + 29 + 15 + 9 + 22 = 112, which equals the collected count.
+Totals: 21 + 16 + 29 + 15 + 9 + 42 = 132, which equals the collected count.
 
 ## 3. Validation notebooks
 
@@ -228,13 +244,16 @@ and open the printed local address (normally http://127.0.0.1:7860). Allow micro
 **Convert tab**
 
 1. Press "Load demo clip". The input player is filled (the shared recording if present, otherwise a generated pseudo-whisper).
-2. Press "Convert". (Loading a different clip clears the output players, so an old output is never shown or transcribed next to a new input.) Expected: the "Input (A)" and "Voiced output (B)" players, a download file, a spectrogram figure (input noise, output with horizontal harmonic lines) and a labels and f0 figure (f0 only on vowel frames, falling over a phrase). Compare A and B by ear.
+2. Press "Convert". (Loading a different clip clears the output players, the compare players, the transcript table and the graph accordions, so an old output is never shown or transcribed next to a new input.) Expected: the "Input (A)" and "Voiced output (B)" players, a download file, a spectrogram figure (input noise, output with horizontal harmonic lines) and a labels and f0 figure (f0 only on vowel frames, falling over a phrase). Compare A and B by ear.
 3. Sliders: base pitch 70 to 250 Hz, intonation (declination) 0 to 0.3, stress 0 to 0.5, aspiration 0 to 0.3, pole warp 0.85 to 1.0, volume 0.2 to 2.0. Move base pitch and convert again: the pitch of B and the f0 plot change. Move the volume slider: B gets louder or quieter.
 4. Warp 1.0 means "off" and must give the same audio as no warp; 0.85 gives a visibly lower formant position and a darker voice.
 5. Variant dropdown: choose `v1_robot` and convert. The f0 plot is flat and the voice monotone. The named variants ignore the intonation, stress, aspiration and warp sliders (they still use base pitch and volume); only "custom" uses all the sliders.
 6. "Compare all variants": five players appear (custom plus the four variants). Listen to the order robot, contour, aspiration, warp.
 7. Download: the wav downloaded plays and has the same length as the output.
 8. Transcribe: with a clip converted, choose a model (base is the default) and press "Transcribe". Expected: a table with the transcript of the input (whisper) and of the voiced output, after a few seconds (the first use of a model downloads it). Type the sentence in "Reference sentence" and press again: a WER row (errors/reference words) appears for both. Change a slider without pressing Convert and transcribe: the output transcript still matches the audio in the output player. Press Transcribe with no clip: error "Upload or record a clip first". On the synthetic dev set Whisper recognises the raw whisper better than the voiced output, so the input column may be the more accurate one. The "Whisper" in the note is the ASR model, not whispered speech.
+
+9. After Convert, open the accordion "Source and loudness". Excitation: two panels of about 70 ms from a voiced region, Rosenberg pulses alone (period equal to 1/f0) and the same pulses with aspiration noise riding on them; at aspiration 0 the two are identical. f0 breakdown: a flat base line, a falling declination line, and the full contour with the stress wobble, on voiced frames only. Loudness: input and output waveforms overlaid and their frame RMS curves in dB; the two RMS curves should follow each other during speech (the output below the speech threshold goes to silence).
+10. "Compare all variants" also fills the accordion "Variant comparison": a grid of six spectrograms (input, custom, four variants) on one colour scale, a bar chart of LSD per variant (lower is closer to the input; about 12 to 13.5 dB on the fixture), and a long term average spectrum plot of input against all variants (the tilt of the output against the input; custom is dashed, and at the default sliders with warp 1.0 it is the same render as v3_aspiration, so its line and LSD bar match v3). No variant is rendered twice.
 
 **Edge cases on the Convert tab**
 
@@ -251,7 +270,14 @@ and open the printed local address (normally http://127.0.0.1:7860). Allow micro
 2. Move "Silence multiplier" and "ZCR threshold" (0 means automatic) and release: the Module A figure updates, the threshold lines move, labels change.
 3. Frame index: after "Analyse clip" the slider maximum becomes the last frame. Check frame 0 and the last frame (both must plot, no error). Move to a vowel frame and a silent frame and compare the envelopes.
 4. Warp factor 1.0: the warped curve is not drawn. 0.85: formant peaks move down.
-5. Press "Analyse clip" with no clip loaded: error "Upload or record a clip on the Convert tab first, or press Load demo clip."
+5. Module B poles and formants (below the envelope plot): a unit circle with the 12 poles of the selected frame and rays labelled 1, 2 and 4 kHz (pole angle is frequency; poles near the circle are sharp formants). Below 1.0 on the warp slider, crosses show the warped poles, rotated towards 0 Hz at the same radius. Move to a vowel frame: poles sit close to the circle at the formant angles; on a silent frame (background noise) the poles sit further inside the circle (radius about 0.5 to 0.9 on the dev clip), so no sharp formants; only exact digital silence gives no poles at all. The formant track plot shows F1 to F3 as dots over the input spectrogram for non-silent frames only (white circles original, cyan triangles warped), with a yellow line at the selected frame. Vowel segments give steady tracks; fricatives give scattered dots.
+6. Press "Analyse clip" with no clip loaded: error "Upload or record a clip on the Convert tab first, or press Load demo clip."
+
+**Live tab** (uses the clip and sliders from the Convert tab)
+
+1. With a clip loaded press "Run clip through the live path". Expected within a few seconds: a player with the live output, a summary (hops, mean, 95th percentile and max ms per hop, fraction over the 10 ms budget, algorithmic delay 20 ms), a per hop processing time plot with the red 10 ms budget line (the line stays far above the curve on a normal machine; the curve rises after the first 0.3 s calibration, which is silent) and a live against offline loudness envelope plot (the curves follow each other, the live one is slightly later).
+2. The summary says the algorithmic delay is a model and device latency is not measured; real device latency comes from `python run_live.py` (see the live mode checklist).
+3. The player is output only. Loading another clip clears it. With no clip loaded the button shows "Upload or record a clip first, or press Load demo clip."
 
 **Results tab**
 
@@ -357,7 +383,7 @@ When no recordings exist, check the whole chain on synthetic data. This needs Wi
 Before the day:
 
 - [ ] `git status` clean on `main`; everyone has pulled.
-- [ ] `python -m pytest tests -q` shows 112 passed (111 passed, 1 skipped without the cached Whisper base model).
+- [ ] `python -m pytest tests -q` shows 132 passed (131 passed, 1 skipped without the cached Whisper base model).
 - [ ] The four notebooks run without errors (section 3).
 - [ ] `python run_offline.py data/raw/shared_test.wav results/out.wav --variants` produces `out.wav` and four variant wavs; listen to all.
 - [ ] Real recordings exist: `data/raw/shared_test.wav` and at least a few `spkXX_sNN_whisper.wav` with transcripts. The repository currently has none, so the notebooks show the synthetic clip.
