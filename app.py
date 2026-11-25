@@ -172,7 +172,7 @@ def label_f0_figure(feats, base_f0=120, decl=0.12, stress=0.25, jitter=0.005):
     fig = Figure(figsize=(7, 3))
     ax1, ax2 = fig.subplots(2, 1, sharex=True)
     ax1.step(t, labels, where="post")
-    ax1.set_yticks([0, 1, 2], ["sil", "noise", "voiced"])
+    ax1.set_yticks([0, 1, 2], ["silence", "consonant", "vowel-like"])
     ax1.set_title("Frame labels", fontsize=9)
     ax2.plot(t, np.where(f0 > 0, f0, np.nan))
     ax2.set_ylabel("f0 (Hz)")
@@ -290,7 +290,7 @@ def pole_figure(af, idx, warp=1.0, order=12, fs=FS):
     ax.set_ylim(-1.3, 1.3)
     ax.set_xlabel("Real part")
     ax.set_ylabel("Imaginary part")
-    ax.set_title(f"Module B: poles of frame {idx} (pole angle = frequency)", fontsize=9)
+    ax.set_title(f"Poles of frame {idx} (pole angle = frequency)", fontsize=9)
     ax.legend(fontsize=7, loc="lower left")
     fig.tight_layout()
     return fig
@@ -316,7 +316,7 @@ def formant_figure(x, A, labels, warp=1.0, idx=None, fs=FS, hop=HOP):
     ax.set_ylim(0, 6000)
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Frequency (Hz)")
-    ax.set_title("Module B: F1-F3 candidates (lowest 3 narrow-band LPC poles) over input spectrogram", fontsize=9)
+    ax.set_title("F1-F3 candidates (lowest 3 narrow-band LPC poles) over input spectrogram", fontsize=9)
     ax.legend(fontsize=7, loc="upper right")
     fig.tight_layout()
     return fig
@@ -378,7 +378,7 @@ def excitation_figure(feats, settings):
     for ax in (ax1, ax2):
         ax.set_ylabel("Amplitude")
     ax2.set_xlabel("Time (ms)")
-    fig.suptitle("Module C: excitation in a voiced region", fontsize=10)
+    fig.suptitle("Excitation in a voiced region", fontsize=10)
     fig.tight_layout()
     return fig
 
@@ -403,7 +403,7 @@ def f0_breakdown_figure(feats, settings):
         ax.plot(t, np.where(c[key] > 0, c[key], np.nan), label=label, lw=1.6 if key == "full" else 1.0)
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("f0 (Hz)")
-    ax.set_title("Module C: what builds the f0 contour (voiced frames, jitter off)", fontsize=9)
+    ax.set_title("What builds the f0 contour (voiced frames, jitter off)", fontsize=9)
     ax.legend(fontsize=7)
     fig.tight_layout()
     return fig
@@ -433,7 +433,7 @@ def loudness_figure(x, y, fs=FS, hop=HOP):
     ax1.set_ylabel("Amplitude")
     for line in ax1.legend(fontsize=7, loc="upper right").get_lines():
         line.set_linewidth(2)
-    ax1.set_title("Module C: loudness, input vs output", fontsize=9)
+    ax1.set_title("Loudness, input vs output", fontsize=9)
     for sig, name, color in ((x, "input RMS", "0.4"), (y, "output RMS", "C1")):
         e = rms_db(sig[:n])
         ax2.plot(np.arange(len(e)) * hop / fs, e, color=color, label=name)
@@ -667,9 +667,9 @@ def module_a_figure(af, silence_mult=3.0, zcr_thr=None):
     axes[2].plot(t, af["voicing"])
     axes[2].set_ylabel("Voicing")
     axes[3].step(t, labels, where="post")
-    axes[3].set_yticks([0, 1, 2], ["silence", "consonant", "vowel"])
+    axes[3].set_yticks([0, 1, 2], ["silence", "consonant", "vowel-like"])
     axes[3].set_xlabel("Time (s)")
-    axes[0].set_title("Module A: per-frame features and labels", fontsize=9)
+    axes[0].set_title("Per-frame features and labels", fontsize=9)
     fig.tight_layout()
     return fig
 
@@ -709,7 +709,7 @@ def lpc_frame_figure(af, idx, warp=1.0, order=12):
         ax.plot(d["freqs"], d["warped_db"], label=f"warped poles ({warp:.2f})")
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel("dB")
-    ax.set_title(f"Module B: frame {d['idx']}", fontsize=9)
+    ax.set_title(f"Frame {d['idx']}", fontsize=9)
     ax.legend(fontsize=7)
     fig.tight_layout()
     return fig, f"Frame {d['idx']}: prediction gain {d['pred_gain_db']:.1f} dB, LPC gain {d['gain']:.4f}"
@@ -856,14 +856,14 @@ def build_app():
             with gr.Tab("Analysis"):
                 gr.Markdown("Uses the clip loaded on the Convert tab.")
                 an_btn = gr.Button("Analyse clip", variant="primary")
-                gr.Markdown("### Module A: frame classification")
+                gr.Markdown("### Frame classification")
                 sil_mult = gr.Slider(1, 10, value=3.0, step=0.1, label="Silence multiplier")
                 zcr_slider = gr.Slider(0, 0.5, value=0, step=0.01, label="ZCR threshold (0 = automatic)")
-                plot_a = gr.Plot(label="Module A")
-                gr.Markdown("### Module B: LPC envelope of one frame")
+                plot_a = gr.Plot(label="Frame features and labels")
+                gr.Markdown("### LPC envelope of one frame")
                 frame_idx = gr.Slider(0, 100, value=0, step=1, label="Frame index")
                 warp_b = gr.Slider(0.85, 1.0, value=0.92, step=0.01, label="Warp factor (1.0 = off)")
-                plot_b = gr.Plot(label="Module B")
+                plot_b = gr.Plot(label="LPC envelope")
                 gain_txt = gr.Markdown()
                 plot_poles = gr.Plot(label="Poles on the unit circle (selected frame)")
                 plot_formants = gr.Plot(label="Formant tracks")
